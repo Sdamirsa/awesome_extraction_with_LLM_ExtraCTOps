@@ -1,6 +1,10 @@
 # Pydantic Extraction Tool Documentation
 
-Pydantic Extraction is a powerful Streamlit application for structured data extraction from various document formats. It provides a flexible framework for defining extraction schemas using Pydantic models and extracting data into structured formats.
+Pydantic Extraction is a painless Streamlit application for structured data extraction from various document formats. It provides a flexible framework for defining extraction schemas using Pydantic models and extracting data into structured formats.
+
+The UI renders nested Pydantic models (in a way that won't drive you crazy, with proper colors and containers), even complex ones with multiple levels of nesting, and allows you to extract data according to your Pydantic data types (dropdown for enums, checkbox for booleans, text box for numbers, etc.). It parses your Pydantic model and creates a form for you to fill out.
+
+![manual_extraction app demo](<manual_extraction app demo.gif>)
 
 ## Use Cases
 
