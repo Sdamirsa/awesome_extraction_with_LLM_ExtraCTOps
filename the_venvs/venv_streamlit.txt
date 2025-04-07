@@ -1,0 +1,7 @@
+streamlit
+pydantic
+pandas
+openpyxl
+watchdog
+docx2txt
+PyPDF2

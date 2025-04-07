@@ -1,0 +1,8 @@
+python-dotenv
+pandas
+openpyxl
+numpy
+
+ollama
+pydantic
+

@@ -1,0 +1,5 @@
+pydantic
+PyPDF2
+docx2txt
+pandas
+openpyxl

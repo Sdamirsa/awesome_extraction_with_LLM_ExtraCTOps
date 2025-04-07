@@ -172,3 +172,9 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+
+the_venvs/venv_main/
+the_venvs/venv_streamlit/
+the_venvs/venv_ollama/
+.DS_Store
