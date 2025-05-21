@@ -1,0 +1,9 @@
+pandas
+openpyxl
+pydantic
+xlsxwriter
+pydantic
+PyPDF2
+docx2txt
+pandas
+openai
