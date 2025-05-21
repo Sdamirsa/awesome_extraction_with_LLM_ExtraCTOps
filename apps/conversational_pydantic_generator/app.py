@@ -42,6 +42,8 @@ Conversational Pydantic Generator App
     - 2025-05-22: version 0.1
 
 # To-do:
+    - [] Add a "test with generated data" feature to validate the generated schema
+    - [] Add a "test with user data" feature to validate the generated schema
     - [] Improve error handling for unreliable API connections
     - [] Add support for more LLM providers
     - [] Implement caching to reduce API costs
@@ -1525,6 +1527,16 @@ def render_schema():
                     with st.expander("Suggestions"):
                         for suggestion in st.session_state.verification_result.suggestions:
                             st.markdown(f"- {suggestion}")
+                
+                # Add download button regardless of verification result
+                st.warning("⚠️ The schema has some issues, but you can still download it if needed.")
+                if st.download_button(
+                    label="Download Pydantic Code Anyway",
+                    data=generate_pydantic_code(st.session_state.schema),
+                    file_name="pydantic_model_unverified.py",
+                    mime="text/plain"
+                ):
+                    st.success("File downloaded successfully!")
     else:
         st.info("Start a conversation to generate your Pydantic schema.")
 
