@@ -37,23 +37,20 @@ Pydantic Extraction App
 
 # Changelog
     - 2025-04-07: version 0.1
+    - 2025-07-24: version 0.2
+        1. Bullet-proof state management with proper initialization and cleanup
+        2. Enhanced session save/load functionality
+        3. Better form state synchronization
+        4. Improved error handling and data validation
+        5. More consistent data flow and separation of concerns
 
 # To-do: 
-    - [] Add the functionality to add LLM output to the memory (based on the id column). It should check the ...
-    - [] Fix the json session load
+    - [ ] Add the functionality to add LLM output to the memory (based on the id column). It should check the ...
+    - [X] Fix the json session load
     - [X] Fox minimum of text input from 60 to 68
-    - [] resolve the incorrectly saving previous data for the new patient 
-    - [] The issue with rendering the text (exit code)
+    - [X] resolve the incorrectly saving previous data for the new patient 
+    - [X] The issue with rendering the text (exit code)
 
-    
-Enhanced Pydantic Extraction App with Robust State Management
-
-Key Improvements:
-1. Bullet-proof state management with proper initialization and cleanup
-2. Enhanced session save/load functionality
-3. Better form state synchronization
-4. Improved error handling and data validation
-5. More consistent data flow and separation of concerns
 """
 
 import streamlit as st
