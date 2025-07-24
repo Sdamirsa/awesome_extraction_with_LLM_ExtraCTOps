@@ -2,12 +2,38 @@
 
 This directory contains generator modules that extract structured data from unstructured text using various Large Language Models (LLMs). The generators are designed to be modular, extensible, and compatible with both synchronous and asynchronous workflows.
 
+## Directory Structure
+
+```
+generators/
+├── generator_ollama.py          # Ollama LLM generator
+├── generator_openai.py          # OpenAI LLM generator
+├── config.py                    # Configuration integration with central config system
+├── utils/                       # Utility modules
+│   ├── __init__.py
+│   ├── utils_messages.py        # Message preparation utilities
+│   └── utils_pydantic.py        # Pydantic model utilities  
+├── tests/                       # Test modules
+│   ├── __init__.py
+│   ├── test_generator_ollama.py
+│   ├── test_generator_openai.py
+│   ├── test_utils_messages.py
+│   ├── test_utils_pydantic.py
+│   └── run_tests.py
+├── __init__.py
+├── pytest.ini                   # Test configuration
+├── setup_tests.py               # Test environment setup
+├── requirements_test.txt        # Test dependencies reference
+└── Readme.md                    # This file
+```
+
 I'll create a comprehensive table for the generators with the columns you specified, plus a few additional useful columns.
 
 ## Generators Comparison Table
 | Generator | Script | Specific venv | LLM | Parser | Provider | Async Support | Multimodal | Interface |
 |-----------|--------|---------------|-----|--------|----------|--------------|------------|-----------|
-| Ollama | generator_Ollama.py | venv_generator_Ollama | Various (llama3, mixtral, etc.) | JSON parsing with fallbacks | Ollama (Local) | Yes | Yes (images) | Direct import, Sync/Async functions |
+| Ollama | generator_ollama.py | venv_ollama | Various (llama3, mixtral, etc.) | JSON parsing with fallbacks | Ollama (Local) | Yes | Yes (images) | Direct import, Sync/Async functions |
+| OpenAI | generator_openai.py | venv_main | GPT models (gpt-4o, gpt-4o-mini, etc.) | JSON parsing with fallbacks | OpenAI (API) | Yes | Yes (images) | Direct import, Sync/Async functions |
 
 
 ## Overview
@@ -93,13 +119,98 @@ class GenerationResult(BaseModel):
 
 ## Available Generators
 
-- **generator_Ollama.py** - Uses Ollama for local LLM generation
+- **generator_ollama.py** - Uses Ollama for local LLM generation
+- **generator_openai.py** - Uses OpenAI API for cloud-based LLM generation
 - *(Additional generators will be added for other LLM providers)*
 
-## Utility Modules
+## Configuration Integration
 
-- **utils_messages.py** - Prepares input messages for LLMs, including multimodal capabilities
-- **utils_pydantic.py** - Handles conversion between Pydantic models and JSON schemas, and parsing LLM outputs
+The generators package is fully integrated with the centralized configuration system located in the `config/` directory. This provides:
+
+- **Centralized LLM settings** - All LLM provider configurations (Ollama, OpenAI, Azure) are managed centrally
+- **Virtual environment management** - Automatic detection and use of the appropriate venv
+- **Environment profiles** - Support for development, testing, staging, and production configurations
+- **Configuration validation** - Built-in validation of generator settings and dependencies
+
+### Using the Configuration System
+
+```python
+from generators.config import generator_config
+
+# Get LLM settings
+ollama_settings = generator_config.ollama_settings
+openai_settings = generator_config.openai_settings
+
+# Get virtual environment path
+venv_python = generator_config.get_venv_python_path()
+
+# Get test dependencies
+test_deps = generator_config.get_test_dependencies()
+
+# Validate configuration
+from generators.config import validate_generator_config
+issues = validate_generator_config()
+```
+
+### Configuration Management
+
+Use the config helper to manage generator settings:
+
+```bash
+# View generator configuration
+python config/config_helper.py generators
+
+# Validate overall configuration
+python config/config_helper.py validate
+
+# Show virtual environment status
+python config/config_helper.py venvs
+```
+
+## Utility Modules
+```
+
+- **utils/utils_messages.py** - Prepares input messages for LLMs, including multimodal capabilities
+- **utils/utils_pydantic.py** - Handles conversion between Pydantic models and JSON schemas, and parsing LLM outputs
+
+## Testing
+
+The generators package includes comprehensive test coverage using the same virtual environment as the generators (`venv_ollama`).
+
+### Setting Up Tests
+
+First, set up the test environment (this installs pytest and related packages in the Ollama venv):
+
+```bash
+cd generators
+python setup_tests.py
+```
+
+### Running Tests
+
+```bash
+# Run all tests using the Ollama venv
+python tests/run_tests.py
+
+# Or manually with the venv Python
+../the_venvs/venv_ollama/bin/python -m pytest tests/ -v
+
+# Run specific test file
+../the_venvs/venv_ollama/bin/python -m pytest tests/test_generator_ollama.py -v
+
+# Run tests with coverage
+../the_venvs/venv_ollama/bin/python -m pytest tests/ --cov=generators --cov-report=html
+```
+
+### Test Structure
+
+- `test_generator_ollama.py` - Tests for the Ollama generator
+- `test_utils_messages.py` - Tests for message utility functions  
+- `test_utils_pydantic.py` - Tests for Pydantic utility functions
+- `run_tests.py` - Test runner script that uses the Ollama venv
+- `setup_tests.py` - Setup script for installing test dependencies
+
+All tests use pytest and include both unit tests and integration tests with mocked dependencies. The tests run in the same virtual environment (`venv_ollama`) as the generators to ensure compatibility.
 
 ## Usage Examples
 
@@ -107,37 +218,15 @@ class GenerationResult(BaseModel):
 
 ```python
 import asyncio
-from generators.generator_Ollama import extract_structured_data_sync
+from generators.generator_ollama import generator_Ollama
+from internal_models import MessageConfig, ModelConfig
 from the_pydantics.example_schema import ExampleModel
 
-# Simple synchronous usage
-parsed_data, raw_response, success = extract_structured_data_sync(
-    text="The field1 value is 'sample text' and field2 is 42.",
-    pydantic_model=ExampleModel,
-    model_name="llama3",
-    temperature=0.0
-)
-
-if success:
-    print(f"Successfully extracted: {parsed_data}")
-else:
-    print(f"Extraction failed. Raw response: {raw_response}")
-```
-
-### Advanced Usage with Configurations
-
-```python
-import asyncio
-from generators.generator_Ollama import generator_Ollama
-from generators.generators_models import MessageConfig, ModelConfig
-from the_pydantics.example_schema import ExampleModel
-
-async def extract_from_text():
-    # Create configuration objects
+async def extract_with_ollama():
     message_config = MessageConfig(
         system_message="Extract structured data from the following text.",
         pre_prompt="Return information as JSON according to the schema.",
-        text="The example contains value 'test data' and number 123.",
+        text="The field1 value is 'sample text' and field2 is 42.",
         pydantic_model=ExampleModel
     )
     
@@ -147,19 +236,80 @@ async def extract_from_text():
         max_tokens=1000
     )
     
-    # Call the generator
     result = await generator_Ollama(message_config, model_config)
     
     if result.parsing_success:
-        print(f"Extracted data: {result.parsed_response}")
+        print(f"Successfully extracted: {result.parsed_response}")
     else:
-        print(f"Failed to parse. Raw response: {result.raw_response}")
-        
-    return result
+        print(f"Extraction failed. Raw response: {result.raw_response}")
 
-# Run async function
-asyncio.run(extract_from_text())
+asyncio.run(extract_with_ollama())
 ```
+
+### Basic Usage with OpenAI
+
+```python
+import asyncio
+from generators.generator_openai import generator_OpenAI
+from internal_models import MessageConfig, ModelConfig
+from the_pydantics.example_schema import ExampleModel
+
+async def extract_with_openai():
+    message_config = MessageConfig(
+        system_message="Extract structured data from the following text.",
+        pre_prompt="Return information as JSON according to the schema.",
+        text="The field1 value is 'sample text' and field2 is 42.",
+        pydantic_model=ExampleModel
+    )
+    
+    model_config = ModelConfig(
+        model_name="gpt-4o-mini", 
+        temperature=0.1,
+        max_tokens=1000
+    )
+    
+    result = await generator_OpenAI(message_config, model_config)
+    
+    if result.parsing_success:
+        print(f"Successfully extracted: {result.parsed_response}")
+    else:
+        print(f"Extraction failed. Raw response: {result.raw_response}")
+
+asyncio.run(extract_with_openai())
+```
+
+### Switching Between Generators
+
+```python
+import asyncio
+from generators.generator_ollama import generator_Ollama  
+from generators.generator_openai import generator_OpenAI
+from internal_models import MessageConfig, ModelConfig
+from the_pydantics.example_schema import ExampleModel
+
+async def compare_generators():
+    message_config = MessageConfig(
+        system_message="Extract structured data from the following text.",
+        pre_prompt="Return information as JSON according to the schema.",
+        text="The field1 value is 'sample text' and field2 is 42.",
+        pydantic_model=ExampleModel
+    )
+    
+    # Use Ollama (local)
+    ollama_config = ModelConfig(model_name="llama3", temperature=0.1)
+    ollama_result = await generator_Ollama(message_config, ollama_config)
+    
+    # Use OpenAI (API)  
+    openai_config = ModelConfig(model_name="gpt-4o-mini", temperature=0.1)
+    openai_result = await generator_OpenAI(message_config, openai_config)
+    
+    print(f"Ollama: {ollama_result.parsing_success}, Time: {ollama_result.execution_time:.2f}s")
+    print(f"OpenAI: {openai_result.parsing_success}, Time: {openai_result.execution_time:.2f}s")
+
+asyncio.run(compare_generators())
+```
+
+
 
 ## Environment Management
 

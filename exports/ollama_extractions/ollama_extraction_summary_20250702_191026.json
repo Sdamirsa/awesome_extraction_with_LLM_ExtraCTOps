@@ -1,0 +1,22 @@
+{
+  "extraction_session": {
+    "timestamp": "20250702_191026",
+    "generator": "ollama",
+    "input_file": "/Users/as/Documents/GIT/awesome_extraction_with_LLM_ExtraCTOps/data/sample_echo_reports_ollama.csv",
+    "total_reports": 3,
+    "successful_extractions": 0,
+    "failed_extractions": 3,
+    "success_rate": 0.0,
+    "average_time_per_report": 0.11335093033267185,
+    "configuration": {
+      "model": "llama3.2:3b",
+      "batch_size": 3,
+      "temperature": 0.1,
+      "max_tokens": 3000
+    }
+  },
+  "pydantic_model": {
+    "name": "EchoReport",
+    "total_possible_fields": 9
+  }
+}

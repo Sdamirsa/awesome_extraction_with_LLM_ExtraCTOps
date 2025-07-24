@@ -1,0 +1,34 @@
+{
+  "venv_main": {
+    "type": "main",
+    "script": null,
+    "enabled": true,
+    "venv_path": "the_venvs/venv_main",
+    "python_exec": "the_venvs/venv_main/bin/python",
+    "requirements_file": "the_venvs/requirements_venv_main.txt"
+  },
+  "venv_ollama": {
+    "type": "script-specific",
+    "script": "/Users/as/Documents/GIT/awesome_extraction_with_LLM_ExtraCTOps/generators/generator_ollama.py",
+    "enabled": true,
+    "venv_path": "the_venvs/venv_ollama",
+    "python_exec": "the_venvs/venv_ollama/bin/python",
+    "requirements_file": "the_venvs/requirements_venv_ollama.txt"
+  },
+  "venv_openai": {
+    "type": "script-specific",
+    "script": "/Users/as/Documents/GIT/awesome_extraction_with_LLM_ExtraCTOps/generators/generator_openai.py",
+    "enabled": true,
+    "venv_path": "the_venvs/venv_openai",
+    "python_exec": "the_venvs/venv_openai/bin/python",
+    "requirements_file": "the_venvs/requirements_venv_openai.txt"
+  },
+  "venv_streamlit": {
+    "type": "script-specific",
+    "script": "apps/",
+    "enabled": true,
+    "venv_path": "the_venvs/venv_streamlit",
+    "python_exec": "the_venvs/venv_streamlit/bin/python",
+    "requirements_file": "the_venvs/venv_streamlit.txt"
+  }
+}

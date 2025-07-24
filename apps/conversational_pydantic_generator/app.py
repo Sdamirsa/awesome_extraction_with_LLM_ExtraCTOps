@@ -522,7 +522,74 @@ def schema_generator_call():
         
         # Parse the response
         response_text = response.choices[0].message.content
-        schema_json = json.loads(response_text)
+        
+        # Add robust JSON parsinzg with error handling
+        try:
+            schema_json = json.loads(response_text)
+        except json.JSONDecodeError as json_err:
+            st.error(f"Error parsing JSON from LLM response: {str(json_err)}")
+            
+            # Attempt to fix common JSON parsing issues
+            try:
+                # Log the problematic response for debugging
+                print(f"Problematic JSON response: {response_text}")
+                
+                # Try to extract valid JSON if it's wrapped in markdown or has extra text
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```|```\s*(.*?)\s*```|\{\s*".*"\s*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_json = json_match.group(1) or json_match.group(2) or json_match.group(0)
+                    # Clean up any trailing commas which are invalid in JSON
+                    extracted_json = re.sub(r',\s*}', '}', extracted_json)
+                    extracted_json = re.sub(r',\s*]', ']', extracted_json)
+                    
+                    # Add more robust fixes for unterminated strings
+                    # Look for lines ending without closing quote
+                    extracted_json = re.sub(r'("(?:\\.|[^"\\])*)\n', r'\1"\n', extracted_json)
+                    
+                    # Fix unterminated property descriptions at end of string
+                    if extracted_json.rstrip().endswith(':'):
+                        extracted_json += ' ""'
+                    
+                    # Try to parse the repaired JSON
+                    schema_json = json.loads(extracted_json)
+                    st.warning("Recovered from malformed JSON in LLM response")
+                else:
+                    # If we can't fix it using the regex, try more aggressive repair
+                    # Try to handle the specific issue of unterminated strings
+                    # Check if the error was due to an unterminated string
+                    if "Unterminated string" in str(json_err):
+                        # Add closing quotes to all lines that appear to have unterminated strings
+                        lines = response_text.split('\n')
+                        for i, line in enumerate(lines):
+                            # Count quotes in the line
+                            quote_count = line.count('"')
+                            # If odd number of quotes, add a closing quote
+                            if quote_count % 2 == 1:
+                                lines[i] = line + '"'
+                        
+                        # Join the lines back together and try to parse
+                        fixed_json = '\n'.join(lines)
+                        try:
+                            schema_json = json.loads(fixed_json)
+                            st.warning("Recovered from unterminated strings in JSON")
+                        except json.JSONDecodeError:
+                            # If we still can't parse it, show the error and return None
+                            with st.expander("Raw LLM Response (Debug Info)"):
+                                st.code(response_text, language="text")
+                            st.error("Could not parse or repair the LLM's JSON response. Try regenerating the schema.")
+                            return None
+                    else:
+                        # If we can't fix it, show the error and return None
+                        with st.expander("Raw LLM Response (Debug Info)"):
+                            st.code(response_text, language="text")
+                        st.error("Could not parse or repair the LLM's JSON response. Try regenerating the schema.")
+                    return None
+            except Exception as repair_err:
+                st.error(f"Failed to repair JSON: {str(repair_err)}")
+                with st.expander("Raw LLM Response (Debug Info)"):
+                    st.code(response_text, language="text")
+                return None
         
         # Log schema structure for debugging
         debug_info = debug_schema_structure(schema_json)
@@ -663,7 +730,74 @@ def advisor_agent_call(schema):
         
         # Parse the response
         response_text = response.choices[0].message.content
-        advisor_json = json.loads(response_text)
+        
+        # Add robust JSON parsing with error handling
+        try:
+            advisor_json = json.loads(response_text)
+        except json.JSONDecodeError as json_err:
+            st.error(f"Error parsing JSON from advisor response: {str(json_err)}")
+            
+            # Attempt to fix common JSON parsing issues
+            try:
+                # Log the problematic response for debugging
+                print(f"Problematic advisor JSON response: {response_text}")
+                
+                # Try to extract valid JSON if it's wrapped in markdown or has extra text
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```|```\s*(.*?)\s*```|\{\s*".*"\s*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_json = json_match.group(1) or json_match.group(2) or json_match.group(0)
+                    # Clean up any trailing commas which are invalid in JSON
+                    extracted_json = re.sub(r',\s*}', '}', extracted_json)
+                    extracted_json = re.sub(r',\s*]', ']', extracted_json)
+                    
+                    # Add more robust fixes for unterminated strings
+                    # Look for lines ending without closing quote
+                    extracted_json = re.sub(r'("(?:\\.|[^"\\])*)\n', r'\1"\n', extracted_json)
+                    
+                    # Fix unterminated property descriptions at end of string
+                    if extracted_json.rstrip().endswith(':'):
+                        extracted_json += ' ""'
+                    
+                    # Try to parse the repaired JSON
+                    advisor_json = json.loads(extracted_json)
+                    st.warning("Recovered from malformed JSON in advisor response")
+                else:
+                    # If we can't fix it using the regex, try more aggressive repair
+                    # Try to handle the specific issue of unterminated strings
+                    # Check if the error was due to an unterminated string
+                    if "Unterminated string" in str(json_err):
+                        # Add closing quotes to all lines that appear to have unterminated strings
+                        lines = response_text.split('\n')
+                        for i, line in enumerate(lines):
+                            # Count quotes in the line
+                            quote_count = line.count('"')
+                            # If odd number of quotes, add a closing quote
+                            if quote_count % 2 == 1:
+                                lines[i] = line + '"'
+                        
+                        # Join the lines back together and try to parse
+                        fixed_json = '\n'.join(lines)
+                        try:
+                            advisor_json = json.loads(fixed_json)
+                            st.warning("Recovered from unterminated strings in JSON")
+                        except json.JSONDecodeError:
+                            # If we still can't parse it, show the error and return None
+                            with st.expander("Raw Advisor Response (Debug Info)"):
+                                st.code(response_text, language="text")
+                            st.error("Could not parse or repair the advisor's JSON response. Try regenerating recommendations.")
+                            return None
+                    else:
+                        # If we can't fix it, show the error and return None
+                        with st.expander("Raw Advisor Response (Debug Info)"):
+                            st.code(response_text, language="text")
+                        st.error("Could not parse or repair the advisor's JSON response. Try regenerating recommendations.")
+                    return None
+            except Exception as repair_err:
+                st.error(f"Failed to repair advisor JSON: {str(repair_err)}")
+                with st.expander("Raw Advisor Response (Debug Info)"):
+                    st.code(response_text, language="text")
+                return None
         
         # Normalize advisor recommendations
         normalized_advisor_json = normalize_advisor_recommendations(advisor_json)
@@ -779,7 +913,74 @@ def structure_optimization_agent_call(schema):
         
         # Parse the response
         response_text = response.choices[0].message.content
-        optimization_json = json.loads(response_text)
+        
+        # Add robust JSON parsing with error handling
+        try:
+            optimization_json = json.loads(response_text)
+        except json.JSONDecodeError as json_err:
+            st.error(f"Error parsing JSON from optimization response: {str(json_err)}")
+            
+            # Attempt to fix common JSON parsing issues
+            try:
+                # Log the problematic response for debugging
+                print(f"Problematic optimization JSON response: {response_text}")
+                
+                # Try to extract valid JSON if it's wrapped in markdown or has extra text
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```|```\s*(.*?)\s*```|\{\s*".*"\s*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_json = json_match.group(1) or json_match.group(2) or json_match.group(0)
+                    # Clean up any trailing commas which are invalid in JSON
+                    extracted_json = re.sub(r',\s*}', '}', extracted_json)
+                    extracted_json = re.sub(r',\s*]', ']', extracted_json)
+                    
+                    # Add more robust fixes for unterminated strings
+                    # Look for lines ending without closing quote
+                    extracted_json = re.sub(r'("(?:\\.|[^"\\])*)\n', r'\1"\n', extracted_json)
+                    
+                    # Fix unterminated property descriptions at end of string
+                    if extracted_json.rstrip().endswith(':'):
+                        extracted_json += ' ""'
+                    
+                    # Try to parse the repaired JSON
+                    optimization_json = json.loads(extracted_json)
+                    st.warning("Recovered from malformed JSON in optimization response")
+                else:
+                    # If we can't fix it using the regex, try more aggressive repair
+                    # Try to handle the specific issue of unterminated strings
+                    # Check if the error was due to an unterminated string
+                    if "Unterminated string" in str(json_err):
+                        # Add closing quotes to all lines that appear to have unterminated strings
+                        lines = response_text.split('\n')
+                        for i, line in enumerate(lines):
+                            # Count quotes in the line
+                            quote_count = line.count('"')
+                            # If odd number of quotes, add a closing quote
+                            if quote_count % 2 == 1:
+                                lines[i] = line + '"'
+                        
+                        # Join the lines back together and try to parse
+                        fixed_json = '\n'.join(lines)
+                        try:
+                            optimization_json = json.loads(fixed_json)
+                            st.warning("Recovered from unterminated strings in JSON")
+                        except json.JSONDecodeError:
+                            # If we still can't parse it, show the error and return None
+                            with st.expander("Raw Optimization Response (Debug Info)"):
+                                st.code(response_text, language="text")
+                            st.error("Could not parse or repair the optimization JSON response. Try again.")
+                            return None
+                    else:
+                        # If we can't fix it, show the error and return None
+                        with st.expander("Raw Optimization Response (Debug Info)"):
+                            st.code(response_text, language="text")
+                        st.error("Could not parse or repair the optimization JSON response. Try again.")
+                    return None
+            except Exception as repair_err:
+                st.error(f"Failed to repair optimization JSON: {str(repair_err)}")
+                with st.expander("Raw Optimization Response (Debug Info)"):
+                    st.code(response_text, language="text")
+                return None
         
         # Create the structure optimization object
         result = {
@@ -907,7 +1108,102 @@ def verification_agent_call(schema, is_satisfied=False):
         
         # Parse the response
         response_text = response.choices[0].message.content
-        verification_json = json.loads(response_text)
+        
+        # Add robust JSON parsing with error handling
+        try:
+            verification_json = json.loads(response_text)
+        except json.JSONDecodeError as json_err:
+            st.error(f"Error parsing JSON from LLM response: {str(json_err)}")
+            
+            # Attempt to fix common JSON parsing issues
+            try:
+                # Log the problematic response for debugging
+                print(f"Problematic JSON response: {response_text}")
+                
+                # Try to extract valid JSON if it's wrapped in markdown or has extra text
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```|```\s*(.*?)\s*```|\{\s*".*"\s*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_json = json_match.group(1) or json_match.group(2) or json_match.group(0)
+                    # Clean up any trailing commas which are invalid in JSON
+                    extracted_json = re.sub(r',\s*}', '}', extracted_json)
+                    extracted_json = re.sub(r',\s*]', ']', extracted_json)
+                    
+                    # Add more robust fixes for unterminated strings
+                    # Look for lines ending without closing quote
+                    extracted_json = re.sub(r'("(?:\\.|[^"\\])*)\n', r'\1"\n', extracted_json)
+                    
+                    # Fix unterminated property descriptions at end of string
+                    if extracted_json.rstrip().endswith(':'):
+                        extracted_json += ' ""'
+                    
+                    # Try to parse the repaired JSON
+                    verification_json = json.loads(extracted_json)
+                    st.warning("Recovered from malformed JSON in LLM response")
+                else:
+                    # If we can't fix it using the regex, try more aggressive repair
+                    # Try to handle the specific issue of unterminated strings
+                    # Check if the error was due to an unterminated string
+                    if "Unterminated string" in str(json_err):
+                        # Add closing quotes to all lines that appear to have unterminated strings
+                        lines = response_text.split('\n')
+                        for i, line in enumerate(lines):
+                            # Count quotes in the line
+                            quote_count = line.count('"')
+                            # If odd number of quotes, add a closing quote
+                            if quote_count % 2 == 1:
+                                lines[i] = line + '"'
+                        
+                        # Join the lines back together and try to parse
+                        fixed_json = '\n'.join(lines)
+                        try:
+                            verification_json = json.loads(fixed_json)
+                            st.warning("Recovered from unterminated strings in JSON")
+                        except json.JSONDecodeError:
+                            # If we still can't parse it, show the error and return None
+                            with st.expander("Raw LLM Response (Debug Info)"):
+                                st.code(response_text, language="text")
+                            st.error("Could not parse or repair the LLM's JSON response. Try regenerating the verification.")
+                            return None
+                    else:
+                        # If we can't fix it, show the error and return None
+                        with st.expander("Raw LLM Response (Debug Info)"):
+                            st.code(response_text, language="text")
+                        st.error("Could not parse or repair the LLM's JSON response. Try regenerating the verification.")
+                        return None
+            except Exception as repair_err:
+                # If we encounter an error during the repair process
+                st.error(f"Error trying to repair JSON: {str(repair_err)}")
+                with st.expander("Raw LLM Response (Debug Info)"):
+                    st.code(response_text, language="text")
+                return None
+            
+            # Attempt to fix common JSON parsing issues
+            try:
+                # Log the problematic response for debugging
+                print(f"Problematic JSON response: {response_text}")
+                
+                # Try to extract valid JSON if it's wrapped in markdown or has extra text
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```|```\s*(.*?)\s*```|\{\s*".*"\s*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_json = json_match.group(1) or json_match.group(2) or json_match.group(0)
+                    # Clean up any trailing commas which are invalid in JSON
+                    extracted_json = re.sub(r',\s*}', '}', extracted_json)
+                    extracted_json = re.sub(r',\s*]', ']', extracted_json)
+                    verification_json = json.loads(extracted_json)
+                    st.warning("Recovered from malformed JSON in LLM response")
+                else:
+                    # If we can't fix it, show the error and return None
+                    with st.expander("Raw LLM Response (Debug Info)"):
+                        st.code(response_text, language="text")
+                    st.error("Could not parse or repair the LLM's JSON response. Try regenerating the verification.")
+                    return None
+            except Exception as repair_err:
+                st.error(f"Failed to repair JSON: {str(repair_err)}")
+                with st.expander("Raw LLM Response (Debug Info)"):
+                    st.code(response_text, language="text")
+                return None
         
         return FinalVerification(**verification_json)
         
@@ -1050,7 +1346,13 @@ def load_app_state(state_b64):
     try:
         # Decode base64 and parse JSON
         state_json = base64.b64decode(state_b64).decode()
-        saved_state = json.loads(state_json)
+        
+        # Add robust JSON parsing with error handling
+        try:
+            saved_state = json.loads(state_json)
+        except json.JSONDecodeError as json_err:
+            st.error(f"Error parsing state file: {str(json_err)}")
+            return False
         
         # Update session state with loaded values
         st.session_state.chat_history = saved_state.get("chat_history", [])
@@ -1945,7 +2247,39 @@ def structure_optimization_agent_call(schema):
         
         # Parse the response
         response_text = response.choices[0].message.content
-        optimization_json = json.loads(response_text)
+        
+        # Add robust JSON parsing with error handling
+        try:
+            optimization_json = json.loads(response_text)
+        except json.JSONDecodeError as json_err:
+            st.error(f"Error parsing JSON from LLM response: {str(json_err)}")
+            
+            # Attempt to fix common JSON parsing issues
+            try:
+                # Log the problematic response for debugging
+                print(f"Problematic JSON response: {response_text}")
+                
+                # Try to extract valid JSON if it's wrapped in markdown or has extra text
+                import re
+                json_match = re.search(r'```json\s*(.*?)\s*```|```\s*(.*?)\s*```|\{\s*".*"\s*\}', response_text, re.DOTALL)
+                if json_match:
+                    extracted_json = json_match.group(1) or json_match.group(2) or json_match.group(0)
+                    # Clean up any trailing commas which are invalid in JSON
+                    extracted_json = re.sub(r',\s*}', '}', extracted_json)
+                    extracted_json = re.sub(r',\s*]', ']', extracted_json)
+                    optimization_json = json.loads(extracted_json)
+                    st.warning("Recovered from malformed JSON in LLM response")
+                else:
+                    # If we can't fix it, show the error and return None
+                    with st.expander("Raw LLM Response (Debug Info)"):
+                        st.code(response_text, language="text")
+                    st.error("Could not parse or repair the LLM's JSON response. Try regenerating the structure optimization.")
+                    return None
+            except Exception as repair_err:
+                st.error(f"Failed to repair JSON: {str(repair_err)}")
+                with st.expander("Raw LLM Response (Debug Info)"):
+                    st.code(response_text, language="text")
+                return None
         
         # Process the optimized schema if present
         if optimization_json.get("is_optimized", False) and optimization_json.get("optimized_schema"):

@@ -29,9 +29,8 @@ This is the overview of modules and package structure.
 ExtraCTOps/
 │
 ├── generators/             # All generation engines and wrappers
-│   └── local_pseudonymizer/ # A local LLM to pseudonymize clinical text
+│   └──  # A local LLM to pseudonymize clinical text
 ├── evaluators/             # Evaluation logic and LLM-based assessors
-│   └── clustering/         # Embedding-based sampling & stratification
 ├── apps/                   # Streamlit frontends
 ├── pydantic_assistant/     # Conversational schema assistant
 ├── report_performance/     # Calculate perfromance and generate reports
@@ -45,7 +44,7 @@ ExtraCTOps/
 │   ├── Voice_handler/      # Ingestion of Voice
 │   └── ExtraCTOps_loops/   # Loading a batch, loop, and returning results
 │   └── ExtraCTOps_DynamicMemory_loops/ # Loading a batch, extract, add new values to pydantic enum, continue, return result
-│   └── unify_string_extractions/ # Get the extraction and turn unstructured strings of a varibale into a unified labels (like what we have with enum)
+│   └── unify_string_extractions/ # Get the extraction and turn unstructured strings of a varibale into a unified labels (like what we have with enum) 
 │ 
 ├── third_party_licenses/   
 │
@@ -55,6 +54,10 @@ ExtraCTOps/
 │                
 ├── the_example_notebooks/  # Example notebooks to run modules or workflows 
 └── thirdparty_use_case/    # Example notebooks incorporating external tools
+└── mini_tools/
+│   └── redcap_integration
+│   └── local_pseudonymizer
+│   └── clustering_sampling/         # Embedding-based sampling & stratification       
 ```
 
 <details>
@@ -143,8 +146,14 @@ A collection of utility modules offering ingestion, handling, and batch-processi
     - Processes audio or voice data (e.g., transcripts, TTS or speech-to-text flows)
     - Enables ingestion of spoken notes or dictations
 - **ExtraCTOps_loops/**
-    - Utilities to batch-load data, run extraction/pseudonymization across a dataset, and aggregate results
-    - Supports logging intermediate states in JSON or .log files for inspection/retry
+    - Comprehensive batch processing module for extracting structured data from unstructured text
+    - Supports async processing with configurable concurrency and batch sizes
+    - Integrates with all ExtraCTOps generators (Ollama, OpenAI, etc.) using unified interface
+    - Robust error handling with retry mechanisms and progress tracking
+    - Flexible input sources: text columns in CSV/Excel or document file paths
+    - Multiple output formats: Excel, CSV, JSON with comprehensive metadata
+    - Built-in backup saves and interruption handling for large-scale processing
+    - Easy configuration through Pydantic models and centralized config system
 
 ### Additional Folders
 - **third_party_licenses/**: Licenses for any external modules or code used within ExtraCTOps.

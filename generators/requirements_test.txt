@@ -1,0 +1,14 @@
+# Test dependencies for generators package
+# These should be added to the relevant venv requirements files
+
+# Core testing framework
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# For testing utilities
+unittest-mock>=1.0.0
+
+# Development and debugging
+ipdb>=0.13.0

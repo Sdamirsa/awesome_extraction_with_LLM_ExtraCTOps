@@ -1,0 +1,28 @@
+{
+  "experiment_label": "ollama_echo_extraction",
+  "total_rows": 3,
+  "processed_rows": 3,
+  "successful_extractions": 0,
+  "failed_extractions": 3,
+  "average_execution_time": 0.11335093033267185,
+  "config": {
+    "input_file": "/Users/as/Documents/GIT/awesome_extraction_with_LLM_ExtraCTOps/data/sample_echo_reports_ollama.csv",
+    "output_file": "/Users/as/Documents/GIT/awesome_extraction_with_LLM_ExtraCTOps/exports/ollama_extractions/echo_ollama_20250702_191023.xlsx",
+    "experiment_label": "ollama_echo_extraction",
+    "text_column": "echo_report_text",
+    "text_path_column": null,
+    "uid_column": "patient_id",
+    "generator_type": "ollama",
+    "pydantic_model": "<class 'the_pydantics.EchoReport.EchoReport'>",
+    "batch_size": 3,
+    "backup_interval": 5,
+    "max_retries": 2,
+    "model_name": "llama3.2:3b",
+    "system_message": "You are an expert cardiologist and medical data extraction specialist. \nExtract structured echocardiogram information from clinical reports with high accuracy. \nFocus on cardiac anatomy, function, measurements, and pathology. \nReturn only valid JSON that matches the provided schema exactly.",
+    "pre_prompt": "Analyze this echocardiogram report and extract all relevant cardiac information. \nInclude measurements with units, anatomical descriptions, functional assessments, and any abnormalities. \nBe precise with medical terminology and numerical values. Return valid JSON only.",
+    "temperature": 0.1,
+    "max_tokens": 3000,
+    "few_shot_json_path": null,
+    "image_paths": null
+  }
+}

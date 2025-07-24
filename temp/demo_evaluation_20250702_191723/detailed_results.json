@@ -1,0 +1,499 @@
+{
+  "metadata": {
+    "total_records_compared": 1,
+    "total_field_comparisons": 25,
+    "fields_evaluated": [
+      "ventricles::LV::LV_function::LVEF::numeric",
+      "ventricles::LV::LV_function::LV_systolic_function_other",
+      "atria::RA::RA_dilation",
+      "valves::tricuspid::TV_structural_status_other",
+      "ventricles::LV::LV_size_structure::LV_volume_diastole::unit",
+      "valves::pulmonary::PV_annulus_size::unit",
+      "ventricles::RV::RV_size_structure::RV_hypertrophy",
+      "atria::LA::LA_dilation",
+      "raw_MRE_Report",
+      "atria::LA::LA_volume_indexed::numeric",
+      "ventricles::LV::LV_function::LV_systolic_function",
+      "valves::tricuspid::TV_regurgitation_severity",
+      "valves::tricuspid::TV_structural_status",
+      "ventricles::LV::LV_size_structure::LV_volume_systole::numeric",
+      "ventricles::LV::LV_function::LVEF::unit",
+      "raw_PID",
+      "row_index",
+      "ventricles::LV::LV_size_structure::LV_volume_diastole::numeric",
+      "ventricles::LV::LV_size_structure::LV_dilation",
+      "valves::pulmonary::PV_annulus_size::numeric",
+      "ventricles::RV::RV_function::RV_systolic_function",
+      "atria::LA::LA_volume_indexed::unit",
+      "ventricles::RV::RV_size_structure::RV_dilation",
+      "ventricles::LV::LV_size_structure::LV_hypertrophy",
+      "ventricles::LV::LV_size_structure::LV_volume_systole::unit"
+    ],
+    "comparison_method": "exact_match"
+  },
+  "overall_metrics": {
+    "total_comparisons": 25,
+    "total_correct": 2,
+    "total_incorrect": 20,
+    "total_no_information": 3,
+    "overall_accuracy_percent": 8.0,
+    "average_missing_rate_percent": 0.0,
+    "average_hallucination_rate_percent": 72.0,
+    "average_correctness_when_extracted_percent": 8.0,
+    "average_f1_score": 0.08
+  },
+  "field_metrics": {
+    "ventricles::LV::LV_function::LVEF::numeric": {
+      "field_name": "ventricles::LV::LV_function::LVEF::numeric",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_function::LV_systolic_function_other": {
+      "field_name": "ventricles::LV::LV_function::LV_systolic_function_other",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 0,
+      "no_information": 1,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 0.0,
+      "correctness_when_extracted_percent": 0,
+      "f1_score": 0
+    },
+    "atria::RA::RA_dilation": {
+      "field_name": "atria::RA::RA_dilation",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0.0,
+      "hallucination_rate_percent": 0.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "valves::tricuspid::TV_structural_status_other": {
+      "field_name": "valves::tricuspid::TV_structural_status_other",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 0,
+      "no_information": 1,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 0.0,
+      "correctness_when_extracted_percent": 0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_size_structure::LV_volume_diastole::unit": {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_diastole::unit",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "valves::pulmonary::PV_annulus_size::unit": {
+      "field_name": "valves::pulmonary::PV_annulus_size::unit",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::RV::RV_size_structure::RV_hypertrophy": {
+      "field_name": "ventricles::RV::RV_size_structure::RV_hypertrophy",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 0,
+      "no_information": 1,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 0.0,
+      "correctness_when_extracted_percent": 0,
+      "f1_score": 0
+    },
+    "atria::LA::LA_dilation": {
+      "field_name": "atria::LA::LA_dilation",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "raw_MRE_Report": {
+      "field_name": "raw_MRE_Report",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0.0,
+      "hallucination_rate_percent": 0.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "atria::LA::LA_volume_indexed::numeric": {
+      "field_name": "atria::LA::LA_volume_indexed::numeric",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_function::LV_systolic_function": {
+      "field_name": "ventricles::LV::LV_function::LV_systolic_function",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "valves::tricuspid::TV_regurgitation_severity": {
+      "field_name": "valves::tricuspid::TV_regurgitation_severity",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "valves::tricuspid::TV_structural_status": {
+      "field_name": "valves::tricuspid::TV_structural_status",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_size_structure::LV_volume_systole::numeric": {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_systole::numeric",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_function::LVEF::unit": {
+      "field_name": "ventricles::LV::LV_function::LVEF::unit",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "raw_PID": {
+      "field_name": "raw_PID",
+      "total_comparisons": 1,
+      "correct": 1,
+      "incorrect": 0,
+      "no_information": 0,
+      "missing_rate_percent": 0.0,
+      "hallucination_rate_percent": 0.0,
+      "correctness_when_extracted_percent": 100.0,
+      "f1_score": 1.0
+    },
+    "row_index": {
+      "field_name": "row_index",
+      "total_comparisons": 1,
+      "correct": 1,
+      "incorrect": 0,
+      "no_information": 0,
+      "missing_rate_percent": 0.0,
+      "hallucination_rate_percent": 0.0,
+      "correctness_when_extracted_percent": 100.0,
+      "f1_score": 1.0
+    },
+    "ventricles::LV::LV_size_structure::LV_volume_diastole::numeric": {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_diastole::numeric",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_size_structure::LV_dilation": {
+      "field_name": "ventricles::LV::LV_size_structure::LV_dilation",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "valves::pulmonary::PV_annulus_size::numeric": {
+      "field_name": "valves::pulmonary::PV_annulus_size::numeric",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::RV::RV_function::RV_systolic_function": {
+      "field_name": "ventricles::RV::RV_function::RV_systolic_function",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "atria::LA::LA_volume_indexed::unit": {
+      "field_name": "atria::LA::LA_volume_indexed::unit",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::RV::RV_size_structure::RV_dilation": {
+      "field_name": "ventricles::RV::RV_size_structure::RV_dilation",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_size_structure::LV_hypertrophy": {
+      "field_name": "ventricles::LV::LV_size_structure::LV_hypertrophy",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    },
+    "ventricles::LV::LV_size_structure::LV_volume_systole::unit": {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_systole::unit",
+      "total_comparisons": 1,
+      "correct": 0,
+      "incorrect": 1,
+      "no_information": 0,
+      "missing_rate_percent": 0,
+      "hallucination_rate_percent": 100.0,
+      "correctness_when_extracted_percent": 0.0,
+      "f1_score": 0
+    }
+  },
+  "detailed_comparisons": [
+    {
+      "field_name": "ventricles::LV::LV_function::LVEF::numeric",
+      "extracted_value": "60",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_function::LV_systolic_function_other",
+      "extracted_value": NaN,
+      "ground_truth_value": NaN,
+      "result": "no_information",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "atria::RA::RA_dilation",
+      "extracted_value": "Mild",
+      "ground_truth_value": "Aplastic",
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "valves::tricuspid::TV_structural_status_other",
+      "extracted_value": NaN,
+      "ground_truth_value": NaN,
+      "result": "no_information",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_diastole::unit",
+      "extracted_value": "mL",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "valves::pulmonary::PV_annulus_size::unit",
+      "extracted_value": "mm",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::RV::RV_size_structure::RV_hypertrophy",
+      "extracted_value": NaN,
+      "ground_truth_value": NaN,
+      "result": "no_information",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "atria::LA::LA_dilation",
+      "extracted_value": "Mild",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "raw_MRE_Report",
+      "extracted_value": "Patient ID: 1004827\nDate of Encounter: 2025-03-12\nFacility: St. Helena General Hospital",
+      "ground_truth_value": "Patient ID: 1004827\nDate of Encounter: 2025-03-12\nFacility: St. Helena General Hospital\nProvider: Dr. Maria Lopez\n\nChief Complaint: Chest pain and shortness of breath\n\nExtracted Diagnoses:\n\t\u2022\tAcute Myocardial Infarction (ICD-10: I21.9)\n\t\u2022\tHypertension (ICD-10: I10)\n\nMedications Extracted:\n\t\u2022\tAspirin 81 mg, PO, daily\n\t\u2022\tAtorvastatin 40 mg, PO, daily\n\t\u2022\tLisinopril 10 mg, PO, daily\n\nKey Procedures:\n\t\u2022\tECG performed, abnormal ST-elevation\n\t\u2022\tCardiac catheterization with stent placement\n\nFollow-up Recommendations:\n\t\u2022\tCardiologist visit in 1 week\n\t\u2022\tLifestyle counseling (diet + exercise)",
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "atria::LA::LA_volume_indexed::numeric",
+      "extracted_value": "35",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_function::LV_systolic_function",
+      "extracted_value": "Normal",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "valves::tricuspid::TV_regurgitation_severity",
+      "extracted_value": "Mild",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "valves::tricuspid::TV_structural_status",
+      "extracted_value": "Normal",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_systole::numeric",
+      "extracted_value": "45",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_function::LVEF::unit",
+      "extracted_value": "%",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "raw_PID",
+      "extracted_value": "111",
+      "ground_truth_value": "111",
+      "result": "correct",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "row_index",
+      "extracted_value": "0",
+      "ground_truth_value": "0",
+      "result": "correct",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_diastole::numeric",
+      "extracted_value": "120",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_size_structure::LV_dilation",
+      "extracted_value": "Normal",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "valves::pulmonary::PV_annulus_size::numeric",
+      "extracted_value": "22",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::RV::RV_function::RV_systolic_function",
+      "extracted_value": "Normal",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "atria::LA::LA_volume_indexed::unit",
+      "extracted_value": "mL/m\u00b2",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::RV::RV_size_structure::RV_dilation",
+      "extracted_value": "Normal",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_size_structure::LV_hypertrophy",
+      "extracted_value": "Mild",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    },
+    {
+      "field_name": "ventricles::LV::LV_size_structure::LV_volume_systole::unit",
+      "extracted_value": "mL",
+      "ground_truth_value": NaN,
+      "result": "incorrect",
+      "uid": "row_1"
+    }
+  ]
+}

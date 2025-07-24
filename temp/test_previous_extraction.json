@@ -1,0 +1,30 @@
+{
+  "__pydantic_extraction_data__": true,
+  "export_timestamp": "2025-07-05T19:11:00.000Z",
+  "total_rows": 2,
+  "reviewed_rows": 1,
+  "model_info": {
+    "model_name": "TestModel",
+    "model_class": "TestModel"
+  },
+  "extractions": [
+    {
+      "id": "row_1",
+      "row_index": 0,
+      "review_status": "manually_reviewed",
+      "review_timestamp": "2025-07-05T19:10:00.000Z",
+      "field1": "test_value_1",
+      "field2": "test_value_2",
+      "raw_text": "Sample text for row 1"
+    },
+    {
+      "id": "row_2", 
+      "row_index": 1,
+      "review_status": "not_reviewed",
+      "review_timestamp": null,
+      "field1": "test_value_3",
+      "field2": "test_value_4",
+      "raw_text": "Sample text for row 2"
+    }
+  ]
+}

@@ -5,3 +5,5 @@ openpyxl
 watchdog
 docx2txt
 PyPDF2
+openai
+xlsxwriter

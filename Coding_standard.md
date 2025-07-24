@@ -52,6 +52,7 @@ ExtraCTOps/
 │   ├── FHIR_handler/       # Ingestion of FHIR
 │   ├── Voice_handler/      # Ingestion of Voice
 │   └── ExtraCTOps_loops/   # Loading a batch of tests, looping over them, and returning results
+├── internal_models         # Pydantid models for internal use of the modules
 │ 
 ├── third_party_licenses/   
 │
