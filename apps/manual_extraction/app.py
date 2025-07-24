@@ -39,7 +39,11 @@ Pydantic Extraction App
     - 2025-04-07: version 0.1
 
 # To-do: 
-    - []
+    - [] Add the functionality to add LLM output to the memory (based on the id column). It should check the ...
+    - [] Fix the json session load
+    - [X] Fox minimum of text input from 60 to 68
+    - [] resolve the incorrectly saving previous data for the new patient 
+    - [] The issue with rendering the text (exit code)
 """
 
 
@@ -49,12 +53,14 @@ import pandas as pd
 import json
 import traceback
 import inspect
+import types
 from datetime import datetime
 from enum import Enum
 from typing import get_type_hints, get_origin, get_args, Dict, List, Optional, Literal, Union, Any
 from pydantic import BaseModel, Field
 import docx2txt
 import PyPDF2
+import copy
 
 # =====================================================
 # 0) Enviroment Arguments
@@ -185,13 +191,119 @@ def create_or_update_extraction(index, field_values, source_data=None, unique_id
         "values": field_values,
         "row_index": index,
         "source_data": source_data,  # Entire raw data
+        "review_status": "manually_reviewed",  # Status indicator for manual review
+        "review_timestamp": datetime.now().isoformat(),  # When it was reviewed
     }
     if unique_id:
-        extraction["id"] = unique_id
+        extraction["id"] = str(unique_id)  # Convert to string for consistency
     else:
         extraction["id"] = f"row_{index+1}"
     
     st.session_state["extractions"][index] = extraction
+
+def generate_default_values(model_class):
+    """
+    Generate default values for a Pydantic model to ensure consistent blank/None values.
+    """
+    if not model_class or not hasattr(model_class, 'model_fields'):
+        return {}
+    
+    default_values = {}
+    
+    def get_default_value(field_info):
+        """Get the default value for a field based on its type."""
+        try:
+            field_annotation = field_info.annotation
+            is_opt = is_optional_type(field_annotation)
+            base_type = get_base_type(field_annotation)
+            
+            # If optional, default to None
+            if is_opt:
+                return None
+            
+            # Enum
+            if inspect.isclass(base_type) and issubclass(base_type, Enum):
+                return None
+            
+            # Literal
+            if get_origin(base_type) is Literal:
+                return None
+            
+            # Boolean
+            if base_type == bool:
+                return None
+            
+            # Numbers
+            if base_type == int:
+                return 0
+            if base_type == float:
+                return 0.0
+            
+            # Nested pydantic model
+            if inspect.isclass(base_type) and issubclass(base_type, BaseModel):
+                return generate_default_values(base_type)
+            
+            # List
+            if get_origin(base_type) is list:
+                return []
+            
+            # String (default)
+            return ""
+            
+        except Exception:
+            return None
+    
+    # Generate defaults for all fields
+    for field_name, field_info in model_class.model_fields.items():
+        default_values[field_name] = get_default_value(field_info)
+    
+    return default_values
+
+def initialize_all_rows_in_memory():
+    """
+    Initialize all rows from the loaded data in session state with 'not_reviewed' status.
+    This ensures all rows are included in exports, even if not manually reviewed.
+    Also generates default values for all fields.
+    """
+    file_data = st.session_state.get("loaded_file")
+    model_class = st.session_state.get("model_class")
+    
+    if not file_data or file_data.get("data") is None or not model_class:
+        return
+    
+    df = file_data["data"]
+    total_rows = len(df)
+    
+    # Generate default values for the model
+    default_values = generate_default_values(model_class)
+    
+    # Extend extractions list to match all rows
+    while len(st.session_state["extractions"]) < total_rows:
+        st.session_state["extractions"].append({})
+    
+    # Initialize each row with source data and not_reviewed status
+    for i in range(total_rows):
+        if not st.session_state["extractions"][i]:  # Only initialize if empty
+            row_data = df.iloc[i].to_dict()
+            
+            # Generate ID from ID column value, not row number
+            id_col = st.session_state.get("id_column")
+            if id_col and id_col in row_data:
+                # Use actual ID column value (convert to string), even if it's falsy (0, empty string, etc.)
+                unique_id = str(row_data[id_col])
+            else:
+                unique_id = f"row_{i+1}"  # Fallback to row number only if ID column doesn't exist
+            
+            # Initialize with default values in the same nested structure as the model
+            # This will be flattened during export, maintaining consistency
+            st.session_state["extractions"][i] = {
+                "values": default_values.copy(),  # Use nested default values (will be flattened on export)
+                "row_index": i,
+                "source_data": row_data,
+                "review_status": "not_reviewed",  # Status indicator
+                "review_timestamp": None,  # No review timestamp yet
+                "id": unique_id  # Use proper ID from data
+            }
 
 def init_session_states():
     """Initialize session state variables for the app."""
@@ -221,10 +333,12 @@ def init_session_states():
         st.session_state["row_selection_input"] = 1
     if "color_index" not in st.session_state:
         st.session_state["color_index"] = 0
+    if "id_column_warning" not in st.session_state:
+        st.session_state["id_column_warning"] = None
+    if "extraction_initialized" not in st.session_state:
+        st.session_state["extraction_initialized"] = False
 
-    # For controlling session type: initiate new or continue previous
-    if "session_type" not in st.session_state:
-        st.session_state["session_type"] = "Initiate New"
+    # For available model names
     if "available_model_names" not in st.session_state:
         st.session_state["available_model_names"] = []
 
@@ -288,6 +402,59 @@ def flatten_for_export(obj, prefix="", separator=flatten_for_export_SEPARATOR):
                 result.update(flatten_for_export(item, new_key))
             else:
                 result[new_key] = item
+    return result
+
+def unflatten_from_export(flattened_dict, separator=flatten_for_export_SEPARATOR):
+    """
+    Reconstruct a nested structure from a flattened dictionary.
+    Reverse operation of flatten_for_export.
+    """
+    result = {}
+    
+    for key, value in flattened_dict.items():
+        if separator in key:
+            # Split the key into parts
+            parts = key.split(separator)
+            current = result
+            
+            # Navigate through the nested structure
+            for i, part in enumerate(parts[:-1]):
+                if part.isdigit():
+                    # This is a list index
+                    index = int(part)
+                    # Ensure current is a list
+                    if not isinstance(current, list):
+                        current = []
+                    # Extend list if needed
+                    while len(current) <= index:
+                        current.append({})
+                    current = current[index]
+                else:
+                    # This is a dictionary key
+                    if part not in current:
+                        # Look ahead to see if next part is a digit (indicating a list)
+                        next_part = parts[i + 1] if i + 1 < len(parts) else None
+                        if next_part and next_part.isdigit():
+                            current[part] = []
+                        else:
+                            current[part] = {}
+                    current = current[part]
+            
+            # Set the final value
+            final_key = parts[-1]
+            if final_key.isdigit():
+                index = int(final_key)
+                if not isinstance(current, list):
+                    current = []
+                while len(current) <= index:
+                    current.append(None)
+                current[index] = value
+            else:
+                current[final_key] = value
+        else:
+            # Simple key without separator
+            result[key] = value
+    
     return result
     
 # =====================================================
@@ -526,9 +693,11 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
     if inspect.isclass(base_type) and issubclass(base_type, Enum):
         enum_values = [e.value for e in base_type]
         options = ["(None)"] + enum_values
-        if current_value not in enum_values:
-            current_value = None
-        index = options.index(current_value) if current_value in options else 0
+        # Check session state first, then fallback to current_value
+        session_value = st.session_state.get(key_base, current_value)
+        if session_value not in enum_values:
+            session_value = None
+        index = options.index(session_value) if session_value in options else 0
         if len(enum_values) <= 5:
             val = st.radio(label_core, options, index=index, help=field_description, key=key_base)
         else:
@@ -539,9 +708,11 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
     if get_origin(base_type) is Literal:
         literal_values = get_args(base_type)
         options = ["(None)"] + list(literal_values)
-        if current_value not in literal_values:
-            current_value = None
-        index = options.index(current_value) if current_value in options else 0
+        # Check session state first, then fallback to current_value
+        session_value = st.session_state.get(key_base, current_value)
+        if session_value not in literal_values:
+            session_value = None
+        index = options.index(session_value) if session_value in options else 0
         if len(literal_values) <= 5:
             val = st.radio(label_core, options, index=index, help=field_description, key=key_base)
         else:
@@ -551,9 +722,19 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
     # Booleans
     if base_type == bool:
         bool_options = ["(None)", "True", "False"]
-        if current_value is True:
+        # Check session state first, then fallback to current_value
+        session_value = st.session_state.get(key_base, None)
+        if session_value is None:
+            if current_value is True:
+                session_value = "True"
+            elif current_value is False:
+                session_value = "False"
+            else:
+                session_value = "(None)"
+        
+        if session_value == "True":
             selected_idx = 1
-        elif current_value is False:
+        elif session_value == "False":
             selected_idx = 2
         else:
             selected_idx = 0
@@ -570,12 +751,29 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
         if is_opt:
             # Let user pick None or a number
             modes = ["(None)", "Number"]
-            mode_index = 1 if (current_value is not None) else 0
+            # Check session state first for mode - prioritize user selection
+            session_mode = st.session_state.get(key_base + "_mode", None)
+            if session_mode is not None:
+                # User has made a selection, use it
+                mode_index = 1 if session_mode == "Number" else 0
+            else:
+                # No user selection yet, use current_value to determine default
+                mode_index = 1 if (current_value is not None) else 0
+            
             choice = st.radio(label_core, modes, index=mode_index, help=field_description, key=key_base + "_mode")
-            if choice == "(None)":
+            
+            # Use session state directly instead of relying on radio return value to avoid timing issues
+            actual_choice = st.session_state.get(key_base + "_mode", choice)
+            
+            if actual_choice == "(None)":
                 return None
             else:
-                default_val = 0 if current_value is None else int(current_value)
+                # Check session state first for value
+                session_value = st.session_state.get(key_base, None)
+                if session_value is None:
+                    default_val = 0 if current_value is None else int(current_value)
+                else:
+                    default_val = int(session_value)
                 val = st.number_input(
                     label_core + " (int)",
                     value=default_val,
@@ -585,7 +783,12 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
                 )
                 return val
         else:
-            default_val = 0 if current_value is None else int(current_value)
+            # Check session state first for value
+            session_value = st.session_state.get(key_base, None)
+            if session_value is None:
+                default_val = 0 if current_value is None else int(current_value)
+            else:
+                default_val = int(session_value)
             val = st.number_input(
                 label_core,
                 value=default_val,
@@ -599,12 +802,29 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
     if base_type == float:
         if is_opt:
             modes = ["(None)", "Number"]
-            mode_index = 1 if (current_value is not None) else 0
+            # Check session state first for mode - prioritize user selection
+            session_mode = st.session_state.get(key_base + "_mode", None)
+            if session_mode is not None:
+                # User has made a selection, use it
+                mode_index = 1 if session_mode == "Number" else 0
+            else:
+                # No user selection yet, use current_value to determine default
+                mode_index = 1 if (current_value is not None) else 0
+            
             choice = st.radio(label_core, modes, index=mode_index, help=field_description, key=key_base + "_mode")
-            if choice == "(None)":
+            
+            # Use session state directly instead of relying on radio return value to avoid timing issues
+            actual_choice = st.session_state.get(key_base + "_mode", choice)
+            
+            if actual_choice == "(None)":
                 return None
             else:
-                default_val = 0.0 if current_value is None else float(current_value)
+                # Check session state first for value
+                session_value = st.session_state.get(key_base, None)
+                if session_value is None:
+                    default_val = 0.0 if current_value is None else float(current_value)
+                else:
+                    default_val = float(session_value)
                 val = st.number_input(
                     label_core + " (float)",
                     value=default_val,
@@ -614,7 +834,12 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
                 )
                 return val
         else:
-            default_val = 0.0 if current_value is None else float(current_value)
+            # Check session state first for value
+            session_value = st.session_state.get(key_base, None)
+            if session_value is None:
+                default_val = 0.0 if current_value is None else float(current_value)
+            else:
+                default_val = float(session_value)
             val = st.number_input(
                 label_core,
                 value=default_val,
@@ -646,10 +871,16 @@ def render_nested_field(field_name, field_info, current_value, prefix, depth, ba
         return render_list_advance(label_core, field_description, current_value, key_base, depth, base_color, item_type) 
 
     # string
-    default_val = str(current_value) if current_value is not None else ""
+    # Check session state first for value
+    session_value = st.session_state.get(key_base, None)
+    if session_value is None:
+        default_val = str(current_value) if current_value is not None else ""
+    else:
+        default_val = str(session_value)
+    
     # Decide whether to use text_area or text_input based on field name
     if field_name.lower() in LONG_TEXT_FIELD_LIST:
-        val = st.text_area(label_core, value=default_val, height=60, help=field_description, key=key_base)
+        val = st.text_area(label_core, value=default_val, height=68, help=field_description, key=key_base)
         return val
     else:
         val = st.text_input(label_core, value=default_val, help=field_description, key=key_base)
@@ -722,6 +953,82 @@ def gather_values_from_state(model_class, prefix=""):
         out[f_name] = get_value(f_name, f_info, prefix)
     return out
 
+def append_llm_output_to_memory(llm_data, separator=flatten_for_export_SEPARATOR):
+    """
+    Append LLM output to memory, linking it via an 'id' column.
+    The input can be JSON or Excel (flattened using the separator).
+    """
+    try:
+        # Flatten the LLM data if it's a nested structure
+        flattened_llm_data = flatten_for_export(llm_data, separator=separator)
+
+        # Ensure the 'id' column exists in the LLM data
+        if 'id' not in flattened_llm_data:
+            st.error("LLM data must contain an 'id' column.")
+            return
+
+        llm_id = flattened_llm_data['id']
+
+        # Check if the 'id' matches any existing row in session_state
+        for extraction in st.session_state.get("extractions", []):
+            if extraction.get("id") == llm_id:
+                # Append LLM data as defaults without overwriting manual extractions
+                extraction.setdefault("llm_values", {}).update(flattened_llm_data)
+                st.success(f"LLM output appended to memory for ID: {llm_id}")
+                return
+
+        # If no match found, add a new entry for the LLM data
+        st.session_state["extractions"].append({
+            "id": llm_id,
+            "llm_values": flattened_llm_data,
+            "values": {},  # Empty manual extraction values
+        })
+        st.success(f"New LLM output added to memory for ID: {llm_id}")
+    except Exception as e:
+        st.error(f"Error appending LLM output to memory: {e}")
+        st.error(traceback.format_exc())
+
+def generate_export_data():
+    """
+    Generate the complete export data including all rows (reviewed and not reviewed)
+    with status indicators and timestamps.
+    """
+    extractions = st.session_state["extractions"]
+    extracted_data = []
+    
+    for i, extraction in enumerate(extractions):
+        # Include ALL rows, whether reviewed or not
+        if extraction:  # Only if extraction exists (not empty dict)
+            vals = extraction.get("values", {})
+            raw_data = extraction.get("source_data", {})
+            review_status = extraction.get("review_status", "not_reviewed")
+            review_timestamp = extraction.get("review_timestamp")
+            
+            # Flatten extracted fields recursively
+            flat = flatten_for_export(vals)
+            
+            # Add index and ID
+            # Ensure ID is first key in dict and convert to string to avoid type conflicts
+            id_val = extraction.get("id", f"row_{i+1}")
+            new_flat = {"id": str(id_val), "row_index": extraction.get("row_index", i)}
+            
+            # Add review status information
+            new_flat["review_status"] = review_status
+            new_flat["review_timestamp"] = review_timestamp
+            
+            # Add flattened extraction values
+            for k, v in flat.items():
+                if k != "id":
+                    new_flat[k] = v
+            
+            # Add raw data with raw_ prefix
+            for rk, rv in raw_data.items():
+                new_flat[f"raw_{rk}"] = rv
+            
+            extracted_data.append(new_flat)
+    
+    return extracted_data
+
 # =====================================================
 # 5) CALLBACKS
 # =====================================================
@@ -770,6 +1077,7 @@ def on_model_select_change():
     if chosen in found_classes:
         st.session_state["model_name"] = chosen
         st.session_state["model_class"] = found_classes[chosen]
+        st.session_state["extraction_initialized"] = False  # Reset extraction initialization flag
 
 def upload_data_source():
     """
@@ -783,6 +1091,16 @@ def upload_data_source():
     st.session_state["loaded_file"] = fdata
     if fdata["type"] in ("excel", "csv") and fdata["data"] is not None:
         st.success(f"✅ Loaded structured data from {fdata['filename']}")
+        # Reset extractions for new file
+        st.session_state["extractions"] = []
+        st.session_state["current_row_index"] = 0
+        st.session_state["extracted_count"] = 0
+        st.session_state["form_state_initialized"] = False  # Reset form state initialization flag
+        st.session_state["extraction_initialized"] = False  # Reset extraction initialization flag
+        # Set form state to defaults when loading new data
+        if st.session_state.get("model_class"):
+            default_values = generate_default_values(st.session_state["model_class"])
+            set_form_session_state_values(st.session_state["model_class"], default_values)
     elif fdata["text"] is not None:
         st.success(f"✅ Loaded text from {fdata['filename']}")
     else:
@@ -797,21 +1115,6 @@ def validate_model_values(model_class, values):
         return True, None, model_instance
     except Exception as e:
         return False, str(e), None
-
-def validate_extraction():
-    """
-    Validate the current row's fields against the Pydantic model.
-    """
-    if not st.session_state["model_class"]:
-        st.warning("No model loaded.")
-        return
-    model_class = st.session_state["model_class"]
-    extracted_values = gather_values_from_state(model_class, prefix="")
-    valid, errs, _ = validate_model_values(model_class, extracted_values)
-    if valid:
-        st.success("Validation successful!")
-    else:
-        st.error(f"Validation failed: {errs}")
 
 def save_extraction_callback():
     """
@@ -848,6 +1151,15 @@ def save_extraction_callback():
     if file_data and file_data["data"] is not None:
         if row_index + 1 < len(file_data["data"]):
             st.session_state["current_row_index"] = row_index + 1
+            # Mark that form state needs to be reset for the new row
+            st.session_state["form_state_initialized"] = False
+            # Set form state to match the target row's values
+            if st.session_state.get("model_class") and st.session_state.get("extractions"):
+                new_idx = row_index + 1
+                target_vals = {}
+                if len(st.session_state["extractions"]) > new_idx and st.session_state["extractions"][new_idx]:
+                    target_vals = st.session_state["extractions"][new_idx].get("values", {})
+                set_form_session_state_values(st.session_state["model_class"], target_vals)
 
 def restore_previous_export(export_data):
     """
@@ -856,31 +1168,41 @@ def restore_previous_export(export_data):
     """
     try:
         # Check if it's a complete session state export
-        if "extractions" in export_data:
+        if "extractions" in export_data or "extractions" in export_data.get("data", {}):
+            # Support both direct and nested under 'data'
+            data_source = export_data if "extractions" in export_data else export_data["data"]
+
             # Process key session state variables
             for key in [
                 "extractions", "model_code_str", "model_name", "id_column", 
                 "text_column", "current_row_index", "extracted_count", 
                 "color_index", "available_model_names"
             ]:
-                if key in export_data:
-                    st.session_state[key] = export_data[key]
-            
+                if key in data_source:
+                    # Avoid ambiguous truth value for pandas Series
+                    val = data_source[key]
+                    if not (isinstance(val, pd.Series) or isinstance(val, pd.DataFrame)):
+                        st.session_state[key] = val
+                    elif isinstance(val, pd.Series) and not val.empty:
+                        st.session_state[key] = val
+                    elif isinstance(val, pd.DataFrame) and not val.empty:
+                        st.session_state[key] = val
+
             # Re-load model code, if present
-            if "model_code_str" in export_data and export_data["model_code_str"]:
+            if "model_code_str" in data_source and isinstance(data_source["model_code_str"], str) and data_source["model_code_str"]:
                 # Parse it for classes
-                found = load_model_code(export_data["model_code_str"])
+                found = load_model_code(data_source["model_code_str"])
                 st.session_state["available_model_names"] = list(found.keys())
                 # Pick the model_name from JSON, if valid
-                if export_data.get("model_name", "") in found:
-                    st.session_state["model_name"] = export_data["model_name"]
-                    st.session_state["model_class"] = found[export_data["model_name"]]
+                if data_source.get("model_name", "") in found:
+                    st.session_state["model_name"] = data_source["model_name"]
+                    st.session_state["model_class"] = found[data_source["model_name"]]
                 elif st.session_state["available_model_names"]:
                     # Default to last
                     last_name = st.session_state["available_model_names"][-1]
                     st.session_state["model_name"] = last_name
                     st.session_state["model_class"] = found[last_name]
-            
+
             # Rebuild a DataFrame from source_data
             all_source_data = []
             for ex in st.session_state["extractions"]:
@@ -894,8 +1216,8 @@ def restore_previous_export(export_data):
                 new_df = pd.DataFrame(all_source_data)
 
             # Load file info
-            filename = export_data.get("loaded_file", {}).get("filename", "previous_session.json")
-            file_type = export_data.get("loaded_file", {}).get("type", "unknown")
+            filename = data_source.get("loaded_file", {}).get("filename", "previous_session.json")
+            file_type = data_source.get("loaded_file", {}).get("type", "unknown")
             
             st.session_state["loaded_file"] = {
                 "filename": filename,
@@ -909,6 +1231,17 @@ def restore_previous_export(export_data):
                 if "text" in all_source_data[0]:
                     st.session_state["loaded_file"]["text"] = all_source_data[0]["text"]
 
+            # Ensure backward compatibility: add review_status to old extractions
+            if "extractions" in st.session_state:
+                for extraction in st.session_state["extractions"]:
+                    if isinstance(extraction, dict) and "review_status" not in extraction:
+                        if extraction.get("values"):  # If has values, assume it was manually reviewed
+                            extraction["review_status"] = "manually_reviewed"
+                            extraction["review_timestamp"] = None  # Unknown timestamp for old data
+                        else:
+                            extraction["review_status"] = "not_reviewed"
+                            extraction["review_timestamp"] = None
+
             return True
         else:
             st.error("Invalid export format (extractions missing).")
@@ -918,49 +1251,158 @@ def restore_previous_export(export_data):
         st.error(traceback.format_exc())
         return False
 
+# Modify session state export to exclude unserializable objects
+def safe_serialize_session_state():
+    state_copy = copy.deepcopy(dict(st.session_state))
+    # Remove unserializable objects
+    for key in list(state_copy.keys()):
+        val = state_copy[key]
+        if callable(val) or isinstance(val, (st.runtime.scriptrunner.ScriptRunContext,)):
+            del state_copy[key]
+        elif isinstance(val, (pd.DataFrame, pd.Series)):
+            # Convert DataFrame/Series to JSON string
+            state_copy[key] = val.to_json()
+        elif isinstance(val, bytes):
+            # Convert bytes to string
+            state_copy[key] = val.decode('utf-8', errors='ignore')
+    return json.dumps(state_copy, default=str)
+
 # =====================================================
-# 6) NAVIGATION CALLBACKS
+# 6) SESSION STATE MANAGEMENT
 # =====================================================
 
-def previous_extraction():
+def reset_session_state_for_new_patient():
     """
-    Goes to the previous row (if possible).
+    Resolve the issue where previous patient data incorrectly persists across new patient sessions.
     """
-    current_idx = st.session_state["current_row_index"]
-    if current_idx > 0:
-        st.session_state["current_row_index"] = current_idx - 1
+    keys_to_reset = [
+        "extractions", "current_row_index", "extracted_count", "loaded_file",
+        "model_code_str", "model_name", "id_column", "text_column"
+    ]
+    for key in keys_to_reset:
+        st.session_state[key] = None
+    st.success("Session state reset for new patient.")
 
-def next_extraction():
+# =====================================================
+# 7) TEXT RENDERING FIX
+# =====================================================
+
+def render_long_text_field(field_name, text):
     """
-    Goes to the next row (if possible).
+    Investigate and correct the text rendering problem for long unstructured text inputs.
     """
-    current_idx = st.session_state["current_row_index"]
+    try:
+        if len(text) > 1000:  # Arbitrary threshold for long text
+            st.text_area(field_name, value=text, height=300)
+        else:
+            st.text_area(field_name, value=text)
+    except Exception as e:
+        st.error(f"Error rendering text field '{field_name}': {e}")
+        st.error(traceback.format_exc())
+
+# =====================================================
+# 8) MAIN APP
+# =====================================================
+
+def check_setup_requirements():
+    """
+    Check if all required components are loaded and configured.
+    Returns True if ready to start extraction, False otherwise.
+    """
+    # Check if Pydantic model is loaded
+    if not st.session_state.get("model_class"):
+        return False
+    
+    # Check if data file is loaded
+    if not st.session_state.get("loaded_file"):
+        return False
+    
+    # Check if structured data requires column selection
     file_data = st.session_state["loaded_file"]
-    if file_data and file_data["data"] is not None:
-        df = file_data["data"]
-        if current_idx < len(df) - 1:
-            st.session_state["current_row_index"] = current_idx + 1
+    if file_data.get("data") is not None and not file_data["data"].empty:
+        # For structured data, require ID and text column selection
+        if not st.session_state.get("id_column"):
+            return False
+        if not st.session_state.get("text_column"):
+            return False
+    
+    return True
 
-def set_row_selection():
+def show_setup_requirements():
     """
-    Reads the user numeric input for row selection, sets current_row_index.
+    Display the setup requirements and current status.
     """
-    row_sel = st.session_state["row_selection_input"]
-    file_data = st.session_state["loaded_file"]
-    if file_data and file_data["data"] is not None:
-        df_len = len(file_data["data"])
-        if 1 <= row_sel <= df_len:
-            st.session_state["current_row_index"] = row_sel - 1
+    st.warning("⚠️ Please complete the setup requirements before starting extraction:")
+    
+    # Check Pydantic model
+    if st.session_state.get("model_class"):
+        st.success("✅ Pydantic model loaded: " + st.session_state.get("model_name", "Unknown"))
+    else:
+        st.error("❌ Please load a Pydantic model in the sidebar:")
+        st.info("   1. Paste your Pydantic model code in the text area OR upload a .py file")
+        st.info("   2. Click 'Parse Pydantic Code' button")
+        st.info("   3. Select the model from the dropdown")
+    
+    # Check data file
+    if st.session_state.get("loaded_file"):
+        file_data = st.session_state["loaded_file"]
+        st.success(f"✅ Data file loaded: {file_data.get('filename', 'Unknown')}")
+        
+        # For structured data, check column selection
+        if file_data.get("data") is not None and not file_data["data"].empty:
+            df = file_data["data"]
+            st.info(f"   📊 Structured data with {len(df)} rows and {len(df.columns)} columns")
+            
+            # Check ID column
+            if st.session_state.get("id_column"):
+                st.success(f"✅ ID column selected: {st.session_state['id_column']}")
+            else:
+                st.error("❌ Please select an ID column in the sidebar:")
+                st.info("   1. Go to 'Column Selection' section")
+                st.info("   2. Choose the 'Unique ID Column' from the dropdown")
+                st.info(f"   3. Available columns: {list(df.columns)}")
+            
+            # Check text column
+            if st.session_state.get("text_column"):
+                st.success(f"✅ Text column selected: {st.session_state['text_column']}")
+            else:
+                st.error("❌ Please select a text column in the sidebar:")
+                st.info("   1. Go to 'Column Selection' section")
+                st.info("   2. Choose the 'Text/Content Column' from the dropdown")
+                st.info(f"   3. Available columns: {list(df.columns)}")
+    else:
+        st.error("❌ Please upload a data file in the sidebar:")
+        st.info("   1. Go to 'Data Source' section")
+        st.info("   2. Upload a CSV, Excel, JSON, TXT, DOCX, or PDF file")
 
-def update_id_column():
-    st.session_state["id_column"] = st.session_state["id_column_select"]
-
-def update_text_column():
-    st.session_state["text_column"] = st.session_state["text_column_select"]
-
-# =====================================================
-# 7) MAIN APP
-# =====================================================
+def initialize_extraction_session():
+    """
+    Initialize the extraction session with proper ID column configuration.
+    """
+    try:
+        # Initialize all rows with the selected ID column
+        initialize_all_rows_in_memory()
+        
+        # Mark extraction as initialized
+        st.session_state["extraction_initialized"] = True
+        
+        # Initialize form state for the current row
+        st.session_state["form_state_initialized"] = False  # Reset to trigger re-initialization
+        
+        # Show success message
+        file_data = st.session_state["loaded_file"]
+        total_rows = len(file_data["data"]) if file_data.get("data") is not None else 1
+        id_col = st.session_state.get("id_column", "row numbers")
+        
+        st.success(f"🎉 Extraction session initialized!")
+        st.info(f"📊 {total_rows} rows initialized with ID column: {id_col}")
+        
+        # Auto-rerun to show the extraction interface
+        st.rerun()
+        
+    except Exception as e:
+        st.error(f"Error initializing extraction session: {e}")
+        st.error("Please check your setup and try again.")
 
 def main():
     st.set_page_config(
@@ -971,100 +1413,92 @@ def main():
     init_session_states()
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # SIDEBAR: CHOOSE SESSION TYPE
+    # SIDEBAR: SESSION SETUP
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     with st.sidebar:
         st.title("Session Setup")
 
-        # Radio for new vs previous
-        st.radio(
-            "Session Type",
-            ["Initiate New", "Continue Previous"],
-            key="session_type"
+        # Pydantic Model Setup
+        st.subheader("Pydantic Model Setup")
+        st.text_area(
+            "Paste your Pydantic model code here:",
+            height=150,
+            value=st.session_state.get("model_code_str", ""),
+            key="pydantic_model_code"
         )
+        st.file_uploader(
+            "Or upload a Python file (.py) with your model:",
+            type=["py"],
+            key="uploaded_py"
+        )
+        if st.button("Parse Pydantic Code"):
+            load_pydantic_code()
+
+        # If we found classes, let user pick from them
+        if st.session_state["available_model_names"]:
+            default_idx = len(st.session_state["available_model_names"]) - 1
+            if st.session_state["model_name"] in st.session_state["available_model_names"]:
+                default_idx = st.session_state["available_model_names"].index(st.session_state["model_name"])
+            
+            picked = st.selectbox(
+                "Select Pydantic Model",
+                st.session_state["available_model_names"],
+                index=default_idx,
+                key="model_name_select",
+                on_change=on_model_select_change
+            )
 
         st.markdown("---")
-        if st.session_state["session_type"] == "Continue Previous":
-            # Show a JSON loader
-            st.subheader("Load Previous JSON")
-            prev_json = st.file_uploader(
-                "Load previous extraction session (JSON):",
-                type=["json"],
-                key="previous_export"
-            )
-            if prev_json is not None:
-                file_data = parse_uploaded_file(prev_json)
-                if file_data['type'] == 'previous_export':
-                    if restore_previous_export(file_data['data']):
-                        st.success("Previous session restored.")
-                else:
-                    st.error("Not a valid previous session JSON.")
-        else:
-            # "Initiate New" => show pydantic code + data input
-            st.subheader("Pydantic Model Setup")
-            st.text_area(
-                "Paste your Pydantic model code here:",
-                height=150,
-                value=st.session_state.get("model_code_str", ""),
-                key="pydantic_model_code"
-            )
-            st.file_uploader(
-                "Or upload a Python file (.py) with your model:",
-                type=["py"],
-                key="uploaded_py"
-            )
-            if st.button("Parse Pydantic Code"):
-                load_pydantic_code()
+        st.subheader("Data Source")
+        st.file_uploader(
+            "Upload data file (Excel, CSV, JSON, TXT, DOCX, PDF):",
+            type=["xlsx", "csv", "json", "txt", "docx", "pdf"],
+            key="data_file",
+            on_change=upload_data_source
+        )
 
-            # If we found classes, let user pick from them
-            if st.session_state["available_model_names"]:
-                default_idx = len(st.session_state["available_model_names"]) - 1
-                if st.session_state["model_name"] in st.session_state["available_model_names"]:
-                    default_idx = st.session_state["available_model_names"].index(st.session_state["model_name"])
-                
-                picked = st.selectbox(
-                    "Select Pydantic Model",
-                    st.session_state["available_model_names"],
-                    index=default_idx,
-                    key="model_name_select",
-                    on_change=on_model_select_change
+        # If structured data loaded, column selection
+        loaded_info = st.session_state.get("loaded_file", {})
+        if loaded_info and loaded_info.get("data") is not None:
+            df = loaded_info["data"]
+            if not df.empty:
+                available_cols = [""] + list(df.columns)
+                st.markdown("**Column Selection**")
+                # Ensure 'Unique ID Column' is displayed first in the UI
+                idx_id = available_cols.index("id") if "id" in available_cols else 0
+                st.selectbox(
+                    "Unique ID Column (optional):",
+                    available_cols,
+                    index=idx_id,
+                    help="Optional unique ID column",
+                    key="id_column_select",
+                    on_change=update_id_column
                 )
 
-            st.subheader("Data Source")
-            st.file_uploader(
-                "Upload data file (Excel, CSV, JSON, TXT, DOCX, PDF):",
-                type=["xlsx", "csv", "json", "txt", "docx", "pdf"],
-                key="data_file",
-                on_change=upload_data_source
-            )
+                cur_txt_col = st.session_state.get("text_column", "")
+                idx_txt = available_cols.index(cur_txt_col) if cur_txt_col in available_cols else 0
+                st.selectbox(
+                    "Text/Content Column:",
+                    available_cols,
+                    index=idx_txt,
+                    help="Column containing the text for extraction",
+                    key="text_column_select",
+                    on_change=update_text_column
+                )
 
-            # If structured data loaded, column selection
-            loaded_info = st.session_state.get("loaded_file", {})
-            if loaded_info and loaded_info.get("data") is not None:
-                df = loaded_info["data"]
-                if not df.empty:
-                    available_cols = [""] + list(df.columns)
-                    st.markdown("**Column Selection**")
-                    cur_id_col = st.session_state.get("id_column", "")
-                    idx_id = available_cols.index(cur_id_col) if cur_id_col in available_cols else 0
-                    st.selectbox(
-                        "Unique ID Column (optional):",
-                        available_cols,
-                        index=idx_id,
-                        help="Optional unique ID column",
-                        key="id_column_select",
-                        on_change=update_id_column
-                    )
-                    cur_txt_col = st.session_state.get("text_column", "")
-                    idx_txt = available_cols.index(cur_txt_col) if cur_txt_col in available_cols else 0
-                    st.selectbox(
-                        "Text/Content Column:",
-                        available_cols,
-                        index=idx_txt,
-                        help="Column containing the text for extraction",
-                        key="text_column_select",
-                        on_change=update_text_column
-                    )
+        st.markdown("---")
+        st.subheader("Previous Extractions")
+        
+        # Upload previous extractions JSON
+        prev_extractions_file = st.file_uploader(
+            "Upload previous extractions JSON:",
+            type=["json"],
+            key="previous_extractions_file",
+            help="Upload a JSON file exported from a previous manual extraction session"
+        )
+        
+        if st.button("🔄 Inject Previous Extractions", type="secondary"):
+            inject_previous_extractions(prev_extractions_file)
 
         st.markdown("---")
         st.title("🔧 UI Configuration")
@@ -1082,14 +1516,48 @@ def main():
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     st.title("📋 Pydantic Extraction Dashboard")
 
-    # 1) If no model or data loaded, instruct user
-    if not st.session_state["model_class"] or not st.session_state["loaded_file"]:
-        st.info("Please select 'Initiate New' or 'Continue Previous' in the sidebar to load data and a model.")
+    # 1) Check if all required components are loaded and configured
+    setup_complete = check_setup_requirements()
+    
+    if not setup_complete:
+        show_setup_requirements()
         return
 
-    # 2) Data Nav + Extraction
+    # 2) Show "Start Extraction" button if not already initialized
+    if not st.session_state.get("extraction_initialized", False):
+        st.success("✅ All requirements met! Ready to start extraction.")
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🚀 Start Extraction", type="primary"):
+                initialize_extraction_session()
+        
+        with col2:
+            st.info("This will initialize all rows with the selected ID column and prepare the extraction interface.")
+        
+        return
+
+    # 3) Data Nav + Extraction (only shown after initialization)
     file_data = st.session_state["loaded_file"]
     model_class = st.session_state["model_class"]
+    
+    # Show ID column warning if exists
+    if st.session_state.get("id_column_warning"):
+        st.warning(st.session_state["id_column_warning"])
+
+    # Initialize form state for the current row if not already done
+    # This prevents overwriting user input during the same session
+    if not st.session_state.get("form_state_initialized", False):
+        st.session_state["form_state_initialized"] = True
+        row_index = st.session_state["current_row_index"]
+        current_vals = {}
+        if len(st.session_state["extractions"]) > row_index:
+            ex = st.session_state["extractions"][row_index]
+            if isinstance(ex, dict) and "values" in ex:
+                current_vals = ex["values"]
+        # Clear previous form state before initializing new row
+        clear_form_session_state(model_class, prefix="")
+        set_form_session_state_values(model_class, current_vals, prefix="")
 
     # If there's structured data, show row nav
     if file_data["data"] is not None and not file_data["data"].empty:
@@ -1097,28 +1565,32 @@ def main():
         total_rows = len(df)
         st.subheader("Data Navigation")
 
-        completed = len([e for e in st.session_state["extractions"] if e])
-        st.progress(completed / total_rows, f"Extracted {completed} of {total_rows} rows")
+        # Calculate progress based on manual review status
+        reviewed_count = len([e for e in st.session_state["extractions"] if e and e.get("review_status") == "manually_reviewed"])
+        st.progress(reviewed_count / total_rows, f"Manually Reviewed {reviewed_count} of {total_rows} rows")
 
         nav_cols = st.columns([1,1,1,1,2])
         with nav_cols[0]:
-            st.button("❮ Previous", on_click=previous_extraction, disabled=(st.session_state["current_row_index"] == 0))
+            st.button("\u276e Previous", on_click=previous_extraction, disabled=(st.session_state["current_row_index"] == 0))
         with nav_cols[1]:
-            st.button("Next ❯", on_click=next_extraction, disabled=(st.session_state["current_row_index"] >= total_rows - 1))
+            st.button("Next \u276f", on_click=next_extraction, disabled=(st.session_state["current_row_index"] >= total_rows - 1))
         with nav_cols[2]:
             st.markdown(f"**Row {st.session_state['current_row_index']+1} of {total_rows}**")
         with nav_cols[3]:
-            st.button("Jump to ➜", on_click=set_row_selection)
+            st.button("Jump to \u279c", on_click=set_row_selection)
         with nav_cols[4]:
             st.number_input(
-                "Row index to jump (1–{})".format(total_rows),
+                "Row index to jump (1{})".format(total_rows),
                 min_value=1,
                 max_value=total_rows,
-                value=st.session_state["current_row_index"] + 1,
+                value=st.session_state["row_selection_input"],
                 step=1,
                 key="row_selection_input",
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                on_change=show_jump_warning
             )
+            if st.session_state.get("show_jump_warning", False):
+                st.warning("Please press the Jump To button to navigate to the selected row.")
     else:
         st.session_state["current_row_index"] = 0
 
@@ -1136,20 +1608,23 @@ def main():
             if isinstance(ex, dict) and "values" in ex:
                 current_vals = ex["values"]
 
-        # Render the model
+        # Render the model (widgets will read from session state)
         process_main_model_fields(model_class, current_vals, prefix="")
 
         # Buttons
-        bc1, bc2, bc3 = st.columns([1,1,1])
+        bc1, bc2 = st.columns([1,1])
         with bc1:
             st.button("Save Extraction", on_click=save_extraction_callback, type="primary")
         with bc2:
-            st.button("Validate", on_click=validate_extraction)
-        with bc3:
-            st.write("")
+            # Show current row status
+            if len(st.session_state["extractions"]) > row_index and st.session_state["extractions"][row_index]:
+                status = st.session_state["extractions"][row_index].get("review_status", "not_reviewed")
+                if status == "manually_reviewed":
+                    st.success("✅ Reviewed")
+                else:
+                    st.warning("⏳ Not Reviewed")
 
     with col_source.container(height=st.session_state["extraction_dashboard_columns_height"]):
-        st.markdown("#### Source Data")
         if file_data["data"] is not None and not file_data["data"].empty:
             if row_index < len(file_data["data"]):
                 row_dict = file_data["data"].iloc[row_index].to_dict()
@@ -1185,52 +1660,61 @@ def main():
 
     tab_data, tab_json = st.tabs(["Data View", "JSON View"])
     with tab_data:
-        extracted_data = []
-        for i, extraction in enumerate(extractions):
-            if extraction:
-                vals = extraction.get("values", {})
-                raw_data = extraction.get("source_data", {})
-                
-                # Flatten extracted fields recursively
-                flat = flatten_for_export(vals)
-                
-                # Add index and ID
-                flat["row_index"] = extraction.get("row_index", i)
-                flat["id"] = extraction.get("id", f"row_{i+1}")
-                
-                # Add raw data with raw_ prefix
-                for rk, rv in raw_data.items():
-                    flat[f"raw_{rk}"] = rv
-                
-                extracted_data.append(flat)
+        extracted_data = generate_export_data()
 
         if extracted_data:
             df_extractions = pd.DataFrame(extracted_data)
-            st.dataframe(df_extractions, use_container_width=True)
+            
+            # Ensure DataFrame is compatible with PyArrow for Streamlit display
+            df_extractions = ensure_dataframe_arrow_compatibility(df_extractions)
+            
+            # Add legend for color coding
+            st.markdown("**Legend:** 🟢 Green = Manually Reviewed | 🔴 Red = Not Reviewed")
+            
+            # Add color coding for review status in the display
+            def highlight_review_status(row):
+                if row['review_status'] == 'manually_reviewed':
+                    return ['background-color: #d4edda'] * len(row)  # Light green for reviewed
+                elif row['review_status'] == 'not_reviewed':
+                    return ['background-color: #f8d7da'] * len(row)  # Light red for not reviewed
+                else:
+                    return [''] * len(row)
+            
+            st.dataframe(
+                df_extractions.style.apply(highlight_review_status, axis=1),
+                use_container_width=True
+            )
+            
+            # Show summary statistics
+            total_rows = len(df_extractions)
+            reviewed_rows = len(df_extractions[df_extractions['review_status'] == 'manually_reviewed'])
+            not_reviewed_rows = total_rows - reviewed_rows
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Rows", total_rows)
+            with col2:
+                st.metric("Reviewed", reviewed_rows, delta=f"{reviewed_rows/total_rows*100:.1f}%")
+            with col3:
+                st.metric("Not Reviewed", not_reviewed_rows, delta=f"{not_reviewed_rows/total_rows*100:.1f}%")
+                
         else:
-            st.info("No valid extractions to display.")
+            st.info("No data to display. Please ensure data is loaded and initialize all rows.")
 
     with tab_json:
+        extracted_data = generate_export_data()
         if extracted_data:
             json_str = json.dumps(extracted_data, indent=2)
             st.code(json_str, language="json")
         else:
-            st.info("No valid extractions to display.")        
+            st.info("No data to display. Please ensure data is loaded and initialize all rows")        
 
     # Export Buttons
-    ec1, ec2, ec3 = st.columns([2,1,1])
+    ec1, ec2 = st.columns([1,1])
     export_time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
     with ec1:
-        session_state_export = json.dumps(dict(st.session_state), default=str)
-        st.download_button(
-            "Download Complete Session State (JSON)",
-            data=session_state_export,
-            file_name=f"extraction_state_{export_time_stamp}.json",
-            mime="application/json",
-            help="Download the entire session state (including all extractions). You can use this to save your incomplete extraction and load it in the future in the app."
-        )
-
-    with ec2:
+        extracted_data = generate_export_data()
         json_str = json.dumps(extracted_data, indent=2)
         st.download_button(
             "Download Extractions (JSON)",
@@ -1239,9 +1723,11 @@ def main():
             mime="application/json"
         )
         
-    with ec3:
+    with ec2:
+        extracted_data = generate_export_data()
         if extracted_data:
-            csv_str = pd.DataFrame(extracted_data).to_csv(index=False)
+            df_for_csv = ensure_dataframe_arrow_compatibility(pd.DataFrame(extracted_data))
+            csv_str = df_for_csv.to_csv(index=False)
             st.download_button(
                 "Download Extractions (CSV)",
                 data=csv_str,
@@ -1249,5 +1735,459 @@ def main():
                 mime="text/csv"
             )
             
+def export_extractions_to_csv():
+    """
+    Exports the extractions to a CSV file with the Unique ID Column as the first column.
+    """
+    file_data = st.session_state.get("loaded_file")
+    if file_data and file_data["data"] is not None:
+        df = file_data["data"]
+        if "id" in df.columns:
+            # Ensure 'id' column is the first column
+            df = df[["id"] + [col for col in df.columns if col != "id"]]
+        df.to_csv("extractions.csv", index=False)
+        st.success("Extractions exported successfully.")
+
+def update_id_column():
+    """
+    Updates the session state for the ID column based on user selection.
+    Also checks for uniqueness of values in the selected column.
+    """
+    st.session_state["id_column"] = st.session_state["id_column_select"]
+    st.session_state["extraction_initialized"] = False  # Reset extraction initialization flag
+    
+    # Check uniqueness of UID column values
+    if st.session_state["id_column"] and st.session_state.get("loaded_file"):
+        file_data = st.session_state["loaded_file"]
+        if file_data.get("data") is not None:
+            try:
+                df = file_data["data"]
+                id_col = st.session_state["id_column"]
+                if id_col in df.columns:
+                    # Check for duplicates
+                    duplicate_values = df[df[id_col].duplicated()][id_col].unique()
+                    if len(duplicate_values) > 0:
+                        # Store warning in session state to avoid blocking
+                        st.session_state["id_column_warning"] = f"Duplicate values found in ID column '{id_col}': {list(duplicate_values)}"
+                    else:
+                        # Clear warning if no duplicates
+                        st.session_state["id_column_warning"] = None
+                else:
+                    st.session_state["id_column_warning"] = None
+            except Exception as e:
+                # Handle errors gracefully
+                st.session_state["id_column_warning"] = f"Error checking ID column uniqueness: {str(e)}"
+
+def update_text_column():
+    """
+    Updates the session state for the text/content column based on user selection.
+    """
+    st.session_state["text_column"] = st.session_state["text_column_select"]
+    st.session_state["extraction_initialized"] = False  # Reset extraction initialization flag
+
+def clear_form_session_state(model_class, prefix=""):
+    """
+    Clear form field session state keys for the given model_class.
+    This prevents previous row values from appearing when navigating to a new row.
+    """
+    if not model_class or not hasattr(model_class, 'model_fields'):
+        return
+        
+    def clear_field_keys(field_name, field_info, prefix):
+        try:
+            base_t = get_base_type(field_info.annotation)
+            k_mode = f"{prefix}{field_name}_mode"   # For optional numeric radio
+            k_val = f"{prefix}{field_name}"         # For actual input
+            
+            # Clear the main field key
+            if k_val in st.session_state:
+                del st.session_state[k_val]
+            
+            # Clear the mode key for optional numeric fields
+            if k_mode in st.session_state:
+                del st.session_state[k_mode]
+            
+            # Handle nested models
+            if inspect.isclass(base_t) and hasattr(base_t, 'model_fields'):
+                for nested_fn, nested_fi in base_t.model_fields.items():
+                    nested_prefix = f"{prefix}{field_name}."
+                    clear_field_keys(nested_fn, nested_fi, nested_prefix)
+            
+            # Handle lists - clear individual item keys
+            if get_origin(base_t) is list:
+                # Clear any existing list item keys
+                keys_to_delete = [key for key in st.session_state.keys() if key.startswith(f"{prefix}{field_name}_")]
+                for key in keys_to_delete:
+                    del st.session_state[key]
+        except Exception as e:
+            # Silent error handling to prevent crashes during form clearing
+            pass
+    
+    # Clear all fields in the model
+    try:
+        for fn, fi in model_class.model_fields.items():
+            clear_field_keys(fn, fi, prefix)
+    except Exception as e:
+        # Silent error handling to prevent crashes during form clearing
+        pass
+
+def set_form_session_state_values(model_class, values, prefix=""):
+    """
+    Set form field session state keys to match the provided values.
+    This ensures widgets display the correct values for the current row.
+    MUST be called BEFORE rendering widgets.
+    """
+    if not model_class or not hasattr(model_class, 'model_fields'):
+        return
+        
+    def set_field_values(field_name, field_info, field_value, prefix):
+        try:
+            base_t = get_base_type(field_info.annotation)
+            is_opt = is_optional_type(field_info.annotation)
+            k_mode = f"{prefix}{field_name}_mode"   # For optional numeric radio
+            k_val = f"{prefix}{field_name}"         # For actual input
+            
+            # Handle different field types
+            if inspect.isclass(base_t) and issubclass(base_t, Enum):
+                # Enum fields
+                if field_value in [e.value for e in base_t]:
+                    st.session_state[k_val] = field_value
+                else:
+                    if k_val not in st.session_state:
+                        st.session_state[k_val] = "(None)"
+                    
+            elif get_origin(base_t) is Literal:
+                # Literal fields
+                literal_values = get_args(base_t)
+                if field_value in literal_values:
+                    st.session_state[k_val] = field_value
+                else:
+                    if k_val not in st.session_state:
+                        st.session_state[k_val] = "(None)"
+                    
+            elif base_t == bool:
+                # Boolean fields
+                if field_value is True:
+                    st.session_state[k_val] = "True"
+                elif field_value is False:
+                    st.session_state[k_val] = "False"
+                else:
+                    if k_val not in st.session_state:
+                        st.session_state[k_val] = "(None)"
+                    
+            elif base_t == int:
+                # Integer fields
+                if is_opt:
+                    if field_value is not None:
+                        st.session_state[k_mode] = "Number"
+                        st.session_state[k_val] = int(field_value)
+                    else:
+                        # Only set if not already set (don't overwrite user selections)
+                        if k_mode not in st.session_state:
+                            st.session_state[k_mode] = "(None)"
+                        if k_val not in st.session_state:
+                            st.session_state[k_val] = 0
+                else:
+                    if k_val not in st.session_state:
+                        st.session_state[k_val] = int(field_value) if field_value is not None else 0
+                    
+                    
+            elif base_t == float:
+                # Float fields
+                if is_opt:
+                    if field_value is not None:
+                        st.session_state[k_mode] = "Number"
+                        st.session_state[k_val] = float(field_value)
+                    else:
+                        # Only set if not already set (don't overwrite user selections)
+                        if k_mode not in st.session_state:
+                            st.session_state[k_mode] = "(None)"
+                        if k_val not in st.session_state:
+                            st.session_state[k_val] = 0.0
+                else:
+                    if k_val not in st.session_state:
+                        st.session_state[k_val] = float(field_value) if field_value is not None else 0.0
+                    
+            elif inspect.isclass(base_t) and issubclass(base_t, BaseModel):
+                # Nested pydantic model
+                nested_values = field_value if isinstance(field_value, dict) else {}
+                set_form_session_state_values(base_t, nested_values, f"{prefix}{field_name}_")
+                
+            elif get_origin(base_t) is list:
+                # List fields
+                list_key = f"{prefix}{field_name}_items"
+                if isinstance(field_value, list):
+                    st.session_state[list_key] = field_value.copy()
+                else:
+                    if list_key not in st.session_state:
+                        st.session_state[list_key] = []
+                    
+            else:
+                # String and other fields
+                if k_val not in st.session_state:
+                    st.session_state[k_val] = str(field_value) if field_value is not None else ""
+                
+        except Exception as e:
+            # Silent error handling to prevent crashes
+            pass
+    
+    # Set values for all fields in the model
+    try:
+        for fn, fi in model_class.model_fields.items():
+            field_value = values.get(fn)
+            set_field_values(fn, fi, field_value, prefix)
+    except Exception as e:
+        # Silent error handling to prevent crashes
+        pass
+
+def previous_extraction():
+    """
+    Navigate to the previous row for extraction.
+    """
+    current_idx = st.session_state["current_row_index"]
+    if current_idx > 0:
+        st.session_state["current_row_index"] = current_idx - 1
+        # Mark that form state needs to be reset for the new row
+        st.session_state["form_state_initialized"] = False
+        # Clear previous form state before initializing new row
+        if st.session_state.get("model_class") and st.session_state.get("extractions"):
+            clear_form_session_state(st.session_state["model_class"], prefix="")
+            new_idx = current_idx - 1
+            target_vals = {}
+            if len(st.session_state["extractions"]) > new_idx and st.session_state["extractions"][new_idx]:
+                target_vals = st.session_state["extractions"][new_idx].get("values", {})
+            set_form_session_state_values(st.session_state["model_class"], target_vals)
+
+def next_extraction():
+    """
+    Navigate to the next row for extraction.
+    """
+    current_idx = st.session_state["current_row_index"]
+    file_data = st.session_state["loaded_file"]
+    if file_data and file_data.get("data") is not None:
+        df = file_data["data"]
+        if current_idx < len(df) - 1:
+            st.session_state["current_row_index"] = current_idx + 1
+            # Mark that form state needs to be reset for the new row
+            st.session_state["form_state_initialized"] = False
+            # Clear previous form state before initializing new row
+            if st.session_state.get("model_class") and st.session_state.get("extractions"):
+                clear_form_session_state(st.session_state["model_class"], prefix="")
+                new_idx = current_idx + 1
+                target_vals = {}
+                if len(st.session_state["extractions"]) > new_idx and st.session_state["extractions"][new_idx]:
+                    target_vals = st.session_state["extractions"][new_idx].get("values", {})
+                set_form_session_state_values(st.session_state["model_class"], target_vals)
+
+def set_row_selection():
+    """
+    Reads the user numeric input for row selection and sets current_row_index.
+    Displays a warning box until the Jump To button is pressed.
+    """
+    row_sel = st.session_state["row_selection_input"]
+    file_data = st.session_state["loaded_file"]
+    if file_data and file_data.get("data") is not None:
+        df_len = len(file_data["data"])
+        if 1 <= row_sel <= df_len:
+            st.session_state["current_row_index"] = row_sel - 1
+            st.session_state["show_jump_warning"] = False
+            # Mark that form state needs to be reset for the new row
+            st.session_state["form_state_initialized"] = False
+            # Clear previous form state before initializing new row
+            if st.session_state.get("model_class") and st.session_state.get("extractions"):
+                clear_form_session_state(st.session_state["model_class"], prefix="")
+                new_idx = row_sel - 1
+                target_vals = {}
+                if len(st.session_state["extractions"]) > new_idx and st.session_state["extractions"][new_idx]:
+                    target_vals = st.session_state["extractions"][new_idx].get("values", {})
+                set_form_session_state_values(st.session_state["model_class"], target_vals)
+        else:
+            st.warning("Invalid row selection.")
+
+def show_jump_warning():
+    """
+    Displays a warning box prompting the user to press the Jump To button.
+    """
+    st.session_state["show_jump_warning"] = True
+
+
+def inject_previous_extractions(uploaded_file):
+    """
+    Inject previous extractions from a JSON file into the current session.
+    Matches UIDs and replaces extracted values and review status for matching rows.
+    """
+    if not uploaded_file:
+        st.warning("Please upload a JSON file containing previous extractions.")
+        return
+    
+    if not st.session_state.get("loaded_file") or not st.session_state.get("model_class"):
+        st.warning("Please load data and select a Pydantic model first before injecting previous extractions.")
+        return
+    
+    try:
+        # Parse the uploaded JSON file
+        file_data = parse_uploaded_file(uploaded_file)
+        
+        # Check if it's a previous export or regular JSON file
+        if file_data["type"] == "previous_export":
+            # This is a previous export file with the correct structure
+            json_data = file_data["data"]
+        elif file_data["type"] == "json":
+            # This is a regular JSON file, check if data exists
+            if file_data.get("data") is None:
+                st.error("Invalid JSON file. The file appears to be empty or corrupted.")
+                return
+            # Convert DataFrame back to JSON-like structure if needed
+            json_data = file_data["data"]
+        else:
+            st.error("Invalid file format. Please upload a valid JSON file.")
+            return
+        
+        # Handle different JSON structures
+        if isinstance(json_data, pd.DataFrame):
+            # DataFrame from regular JSON file - convert to list of dicts
+            previous_extractions = json_data.to_dict('records')
+        elif isinstance(json_data, list):
+            # Direct list of extraction records
+            previous_extractions = json_data
+        elif isinstance(json_data, dict) and "extractions" in json_data:
+            # Session state export format
+            previous_extractions = json_data["extractions"]
+        elif isinstance(json_data, dict) and "__pydantic_extraction_data__" in json_data:
+            # Previous export format - extract extractions list
+            previous_extractions = json_data.get("extractions", [])
+        else:
+            st.error("Unsupported JSON structure. Please upload a valid extraction export file.")
+            return
+        
+        if not previous_extractions:
+            st.warning("No previous extractions found in the uploaded file.")
+            return
+        
+        # Get current session info
+        current_extractions = st.session_state.get("extractions", [])
+        id_column = st.session_state.get("id_column", "")
+        injected_count = 0
+        matched_count = 0
+        
+        # Create a mapping of previous extractions by ID
+        previous_by_id = {}
+        for prev_extraction in previous_extractions:
+            if isinstance(prev_extraction, dict):
+                # Handle different ID field formats
+                extraction_id = None
+                if "id" in prev_extraction:
+                    extraction_id = prev_extraction["id"]
+                elif id_column and f"raw_{id_column}" in prev_extraction:
+                    extraction_id = prev_extraction[f"raw_{id_column}"]
+                elif "row_index" in prev_extraction:
+                    extraction_id = f"row_{prev_extraction['row_index'] + 1}"
+                
+                if extraction_id:
+                    previous_by_id[str(extraction_id)] = prev_extraction  # Convert to string for consistency
+        
+        # Match and inject previous extractions
+        for i, current_extraction in enumerate(current_extractions):
+            if not isinstance(current_extraction, dict):
+                continue
+                
+            current_id = str(current_extraction.get("id", f"row_{i+1}"))
+            
+            if current_id in previous_by_id:
+                matched_count += 1
+                prev_data = previous_by_id[current_id]
+                
+                # Separate flattened extraction data from metadata
+                flattened_extraction_data = {}
+                metadata = {}
+                
+                for key, value in prev_data.items():
+                    # Skip null values and empty strings for extraction data
+                    if key.startswith(("id", "row_index", "review_status", "review_timestamp", "raw_")):
+                        metadata[key] = value
+                    else:
+                        # Only include non-null, non-empty values in extraction data
+                        if value is not None and value != "":
+                            flattened_extraction_data[key] = value
+                
+                # Reconstruct nested structure from flattened data
+                if flattened_extraction_data:
+                    try:
+                        reconstructed_values = unflatten_from_export(flattened_extraction_data)
+                        
+                        # Update the current extraction with reconstructed data
+                        current_extraction["values"] = reconstructed_values
+                        current_extraction["review_status"] = metadata.get("review_status", "manually_reviewed")
+                        current_extraction["review_timestamp"] = metadata.get("review_timestamp")
+                        injected_count += 1
+                        
+                    except Exception as e:
+                        st.warning(f"Failed to reconstruct data for ID {current_id}: {e}")
+                        # Fallback: try to use the data as-is if it's already in the right format
+                        if any(key not in ["id", "row_index", "review_status", "review_timestamp"] and not key.startswith("raw_") for key in prev_data.keys()):
+                            # Filter out metadata and use remaining data
+                            filtered_data = {k: v for k, v in prev_data.items() 
+                                           if not k.startswith(("id", "row_index", "review_status", "review_timestamp", "raw_")) 
+                                           and v is not None and v != ""}
+                            if filtered_data:
+                                current_extraction["values"] = filtered_data
+                                current_extraction["review_status"] = metadata.get("review_status", "manually_reviewed")
+                                current_extraction["review_timestamp"] = metadata.get("review_timestamp")
+                                injected_count += 1
+        
+        # Update session state
+        st.session_state["extractions"] = current_extractions
+        
+        # Reset form state to reflect the changes
+        st.session_state["form_state_initialized"] = False
+        
+        # Show results
+        if injected_count > 0:
+            st.success(f"✅ Successfully injected {injected_count} previous extractions (matched {matched_count} rows by ID)")
+            # Update extracted count
+            manually_reviewed = len([e for e in current_extractions if e and e.get("review_status") == "manually_reviewed"])
+            st.session_state["extracted_count"] = manually_reviewed
+        else:
+            if matched_count > 0:
+                st.warning(f"⚠️ Found {matched_count} matching IDs but no valid extraction data to inject.")
+            else:
+                st.warning("⚠️ No matching IDs found between current data and previous extractions.")
+        
+    except Exception as e:
+        st.error(f"Error injecting previous extractions: {e}")
+        st.error(traceback.format_exc())
+
+def ensure_dataframe_arrow_compatibility(df):
+    """
+    Ensure DataFrame is compatible with PyArrow for Streamlit display.
+    Fixes mixed types and other compatibility issues.
+    """
+    if df is None or df.empty:
+        return df
+    
+    # Make a copy to avoid modifying the original
+    df_copy = df.copy()
+    
+    # Convert mixed type columns to string
+    for col in df_copy.columns:
+        if df_copy[col].dtype == 'object':
+            # Check if column has mixed types
+            try:
+                # Try to convert to string to ensure consistency
+                df_copy[col] = df_copy[col].astype(str)
+            except Exception:
+                # If that fails, handle null values
+                df_copy[col] = df_copy[col].fillna('').astype(str)
+    
+    return df_copy
+
 if __name__ == "__main__":
+    # Initialize session state variables
+    init_session_states()
+
+    # Run the main app
     main()
+
+    # If user has not pressed Jump To, show warning
+    if st.session_state.get("show_jump_warning", False):
+        st.warning("Please press the Jump To button to navigate to the selected row.")
