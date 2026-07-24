@@ -34,9 +34,12 @@ ExtraCTOps/
 │   └── clustering/         # Embedding-based sampling & stratification
 ├── apps/                   # Streamlit frontends
 ├── pydantic_assistant/     # Conversational schema assistant
-├── report_performance/     # Calculate perfromance and generate reports
 ├── tuning_loop/            # Parameter sweep and optimization logic
 ├── prompt_loop/            # Prompt-tuning workflows
+├── post_hoc_coding/        # Turning dynamic (string for example) extraction to standard coded terms
+│   ├── rag_based/          # Applying RAG-based labels when we know the codes
+│   └── llm_based/          # Pooling labels, and defining themes and codes and post-hoc labeling
+├── report_performance/     # Calculate performance and generate reports
 ├── explainers/             # Highlighting & certainty scorers
 ├── utils/                  # Common tools
 │   ├── document_handler/   # Ingestion of PDF/HTML/Docx/XLSX/CSV/JSON
